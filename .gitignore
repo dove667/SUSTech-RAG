@@ -1,0 +1,53 @@
+CONTRIBUTING.md
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# Packaging / test
+.pytest_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+
+# Virtualenv / uv
+.venv/
+.uv-cache/
+
+# Local env
+.env
+.env.*
+!.env.example
+
+# Editors / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Runtime data
+data/raw/
+data/interim/
+data/vector_store/
+data/cache/
+data/models/
+
+# Keep data dir in repo if empty
+!data/.gitkeep
+
+# Logs
+*.log
+
+# Temporary
+tmp/
+temp/

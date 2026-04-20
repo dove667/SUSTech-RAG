@@ -1,0 +1,54 @@
+project:
+  name: sustech-campus-rag
+  data_dir: data
+
+crawl:
+  user_agent: "Mozilla/5.0 (compatible; SUSTechCampusRAG/0.1; +https://www.sustech.edu.cn/)"
+  seed_urls:
+    - "https://www.sustech.edu.cn/"
+    - "https://admissions.sustech.edu.cn/"
+    - "https://www.sustech.edu.cn/en/"
+  allowed_domains:
+    - "www.sustech.edu.cn"
+    - "sustech.edu.cn"
+    - "admissions.sustech.edu.cn"
+  max_pages: 120
+  timeout_seconds: 20
+  include_pdf_links: true
+
+processing:
+  min_text_length: 80
+  max_repeated_line_ratio: 0.35
+  drop_patterns:
+    - "版权所有"
+    - "Copyright"
+    - "ICP备"
+  chunk_size: 500
+  chunk_overlap: 100
+
+embedding:
+  model_name: "BAAI/bge-small-zh-v1.5"
+  local_path: "data/models/embeddings/BAAI/bge-small-zh-v1.5"
+  batch_size: 16
+
+retrieval:
+  similarity_top_k: 8
+  rerank_top_n: 4
+  reranker_model: "BAAI/bge-reranker-v2-m3"
+  reranker_local_path: "data/models/rerankers/BAAI/bge-reranker-v2-m3"
+
+vector_store:
+  persist_dir: "data/vector_store/chroma"
+  collection_name: "sustech-campus-kb"
+
+llm:
+  backend: "llama_cpp"
+  local:
+    binary_path: "data/models/llama.cpp/llama-cli"
+    model_path: "data/models/llm/qwen/Qwen3-8B-Q4_K_M.gguf"
+    n_ctx: 8192
+    temperature: 0.2
+    max_tokens: 512
+  dashscope:
+    model: "qwen-plus"
+    temperature: 0.2

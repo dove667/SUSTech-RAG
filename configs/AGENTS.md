@@ -26,6 +26,7 @@ Runtime configuration for the SUSTech RAG pipeline via YAML files and environmen
 | | `rerank_top_n` | Final documents passed to LLM after reranking. |
 | **vector_store** | `persist_dir` | Local path for ChromaDB storage. |
 | **llm** | `backend` | Choice between `llama_cpp` (local) or `dashscope` (cloud). |
+| | `local.binary_path` | Optional system path to `llama-cli`; prefer env var `LLAMA_CPP_BINARY`. |
 | | `local.model_path` | Path to the GGUF model file. |
 | | `local.n_ctx` | Context window size for local inference. |
 

@@ -95,9 +95,30 @@ docs/project-guide.md         项目结构总览
 ```text
 data/models/embeddings/BAAI/bge-small-zh-v1.5
 data/models/rerankers/BAAI/bge-reranker-v2-m3
-data/models/llama.cpp/llama-cli
 data/models/llm/qwen/Qwen3-8B-Q4_K_M.gguf
 ```
+
+## llama.cpp Runtime Options
+
+`llm.local` 下面现在可以直接配置 `llama.cpp` 运行参数：
+
+- `binary_path`：`llama-cli` 路径
+- `model_path`：GGUF 模型路径
+- `device_mode`：`auto`、`cpu`、`custom`
+- `device_name`：当 `device_mode=custom` 时传给 `--device` 的原始值
+- `gpu_layers`：传给 `-ngl`
+- `threads` / `threads_batch`：CPU 线程数
+- `single_turn`：是否单轮输出
+- `simple_io`：是否使用简化 I/O
+- `reasoning`：`off`、`on`、`auto`
+- `extra_args`：额外原样透传给 `llama-cli`
+
+推荐：
+
+- macOS 首次调试：`device_mode: cpu`
+- `binary_path` 建议留空，并通过 `LLAMA_CPP_BINARY` 指向系统安装目录
+- macOS 想尝试 Metal：`device_mode: auto`，并把 `gpu_layers` 改成 `auto` 或较大的数字
+- Windows / Linux GPU：优先用 `device_mode: auto`，必要时改 `custom + device_name`
 
 ## Repository Layout
 

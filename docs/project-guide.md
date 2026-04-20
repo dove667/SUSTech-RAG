@@ -121,7 +121,7 @@ ChromaDB 本地向量库。
 Hugging Face 缓存目录。
 
 `data/models/`
-本地模型目录，优先于在线下载。
+本地 embedding、reranker 和 GGUF 模型目录，优先于在线下载。
 
 ## 配置里最重要的几项
 

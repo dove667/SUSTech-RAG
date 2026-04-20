@@ -7,11 +7,15 @@ from urllib.parse import urljoin, urlparse
 
 import httpx
 from bs4 import BeautifulSoup
-from readability import Document
 
 from sustech_rag.config.models import CrawlConfig
 from sustech_rag.pipeline.schemas import RawDocument
 from sustech_rag.utils.io import ensure_dir
+
+try:
+    from readability import Document
+except ImportError:  # pragma: no cover - environment-dependent fallback
+    Document = None
 
 
 class SiteCrawler:
@@ -74,11 +78,7 @@ class SiteCrawler:
         path = self.pages_dir / f"{digest}.html"
         path.write_text(html, encoding="utf-8")
 
-        readable = Document(html)
-        title = readable.short_title() or url
-        body_html = readable.summary(html_partial=True)
-        soup = BeautifulSoup(body_html, "html.parser")
-        text = soup.get_text("\n", strip=True)
+        title, text, parser = self._extract_main_content(url, html)
         return RawDocument(
             doc_id=digest,
             url=url,
@@ -86,8 +86,25 @@ class SiteCrawler:
             content_type="text/html",
             text=text,
             source_path=str(path),
-            metadata={"parser": "readability"},
+            metadata={"parser": parser},
         )
+
+    def _extract_main_content(self, url: str, html: str) -> tuple[str, str, str]:
+        soup = BeautifulSoup(html, "html.parser")
+        fallback_title = soup.title.get_text(strip=True) if soup.title else url
+
+        if Document is not None:
+            readable = Document(html)
+            title = readable.short_title() or fallback_title
+            body_html = readable.summary(html_partial=True)
+            body_soup = BeautifulSoup(body_html, "html.parser")
+            text = body_soup.get_text("\n", strip=True)
+            if text:
+                return title, text, "readability"
+
+        main_node = soup.find("main") or soup.find("article") or soup.body or soup
+        text = main_node.get_text("\n", strip=True)
+        return fallback_title, text, "bs4_fallback"
 
     def _extract_links(self, base_url: str, html: str) -> list[str]:
         soup = BeautifulSoup(html, "html.parser")

@@ -48,9 +48,18 @@ class VectorStoreConfig(BaseModel):
 class LocalLLMConfig(BaseModel):
     binary_path: str = ""
     model_path: str = ""
+    device_mode: str = "cpu"
+    device_name: str = ""
+    gpu_layers: str = "0"
+    threads: int = 0
+    threads_batch: int = 0
+    single_turn: bool = True
+    simple_io: bool = True
+    reasoning: str = "off"
     n_ctx: int = 8192
     temperature: float = 0.2
     max_tokens: int = 512
+    extra_args: list[str] = Field(default_factory=list)
 
 
 class DashScopeLLMConfig(BaseModel):

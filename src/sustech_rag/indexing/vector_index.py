@@ -27,7 +27,10 @@ def build_vector_index(config: AppConfig) -> VectorStoreIndex:
         for row in chunks
     ]
     model_ref = config.embedding.local_path or config.embedding.model_name
-    embed_model = HuggingFaceEmbedding(model_name=model_ref)
+    embed_model = HuggingFaceEmbedding(
+        model_name=model_ref,
+        cache_folder=str(config.project.data_dir / "cache" / "huggingface"),
+    )
     chroma_client = chromadb.PersistentClient(path=str(config.vector_store.persist_dir))
     collection = chroma_client.get_or_create_collection(config.vector_store.collection_name)
     vector_store = ChromaVectorStore(chroma_collection=collection)

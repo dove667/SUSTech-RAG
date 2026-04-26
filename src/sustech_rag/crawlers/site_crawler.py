@@ -42,6 +42,7 @@ class SiteCrawler:
     def __init__(self, config: CrawlConfig, data_dir: Path) -> None:
         self.config = config
         self.pages_dir = ensure_dir(data_dir / "raw" / "pages")
+        # PDF 目录仍然保留，便于后续单独开启和验证 PDF 抓取流程。
         self.pdfs_dir = ensure_dir(data_dir / "raw" / "pdfs")
 
     def crawl(self) -> list[RawDocument]:
@@ -87,6 +88,7 @@ class SiteCrawler:
         return docs
 
     def _save_binary_doc(self, url: str, content: bytes) -> RawDocument:
+        # 当前默认配置不会走到这里；PDF 保存逻辑保留为后续可选开发项。
         digest = hashlib.sha1(url.encode("utf-8")).hexdigest()
         path = self.pdfs_dir / f"{digest}.pdf"
         path.write_bytes(content)

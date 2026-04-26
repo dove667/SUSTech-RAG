@@ -6,13 +6,11 @@ crawl:
   user_agent: "Mozilla/5.0 (compatible; SUSTechCampusRAG/0.1; +https://www.sustech.edu.cn/)"
   seed_urls:
     - "https://www.sustech.edu.cn/"
-    - "https://admissions.sustech.edu.cn/"
-    - "https://lib.sustech.edu.cn/"
   allowed_domains:
     - "sustech.edu.cn"
-  max_pages: 120
+  max_pages: 200
   timeout_seconds: 20
-  include_pdf_links: true
+  include_pdf_links: false
 
 processing:
   min_text_length: 80

@@ -8,7 +8,7 @@
 - `config/`: Configuration schema and YAML loading.
 - `crawlers/`: Web scraping and document acquisition.
 - `pipeline/`: High-level orchestration and service layer.
-- `processing/`: Document cleaning, PDF parsing, and chunking.
+- `processing/`: Document cleaning, chunking, and retained PDF parsing code that is not enabled by default.
 - `indexing/`: Vector database management (ChromaDB).
 - `retrieval/`: Search logic and reranking engine.
 - `llm/`: Large Language Model backend abstractions.

@@ -4,7 +4,7 @@
 
 这个项目用于构建一个面向南方科技大学公开知识的本地 RAG 系统：
 
-- 抓取公开网页和 PDF
+- 抓取公开网页
 - 清洗、过滤并切分成适合检索的文本块
 - 用中文 embedding 建立本地向量库
 - 用 reranker 做精筛
@@ -13,7 +13,7 @@
 ## 一图看懂
 
 ```text
-Public Web / PDF
+Public Web
         |
         v
      crawl
@@ -69,7 +69,7 @@ Public Web / PDF
 
 ## 代码入口
 
-主 CLI 在 [src/sustech_rag/cli/main.py](/Users/dove/Desktop/LLM/RAG/src/sustech_rag/cli/main.py)。
+主 CLI 在 [src/sustech_rag/cli/main.py](../src/sustech_rag/cli/main.py)。
 
 常用命令：
 
@@ -86,10 +86,10 @@ uv run sustech-rag query "南科大本科招生有什么特色？"
 负责读取 YAML 配置，并解析成本地绝对路径。
 
 `src/sustech_rag/crawlers/`
-负责从 SUSTech 公开站点抓取 HTML/PDF，并保存原始文件。
+负责从 SUSTech 公开站点抓取 HTML，并保存原始文件。PDF 路径仍然保留为可选开发项。
 
 `src/sustech_rag/processing/`
-负责 PDF 文本提取、正文清洗、噪声过滤和文本分块。
+负责正文清洗、噪声过滤和文本分块。PDF 文本提取代码目前保留但默认未启用。
 
 `src/sustech_rag/pipeline/`
 负责把 crawl、preprocess、chunk、answer 这些步骤串起来。
@@ -109,7 +109,7 @@ uv run sustech-rag query "南科大本科招生有什么特色？"
 ## 数据目录约定
 
 `data/raw/`
-原始抓取结果，包括 HTML 和 PDF。
+原始抓取结果目前以 HTML 为主。`raw/pdfs/` 目录和相关代码仍保留，但当前默认配置未启用 PDF 抓取，且现阶段测试中 crawler 也尚未实际抓到 PDF。
 
 `data/interim/`
 清洗后的文档与 chunks，例如 `documents.cleaned.jsonl`、`chunks.jsonl`。
@@ -125,7 +125,7 @@ Hugging Face 缓存目录。
 
 ## 配置里最重要的几项
 
-配置文件在 [configs/default.yaml](/Users/dove/Desktop/LLM/RAG/configs/default.yaml)。
+配置文件在 [configs/default.yaml](../configs/default.yaml)。
 
 建议优先关注：
 
@@ -143,11 +143,11 @@ Hugging Face 缓存目录。
 
 如果你想用最少时间理解项目，建议按这个顺序看：
 
-1. [README.md](/Users/dove/Desktop/LLM/RAG/README.md)
-2. [configs/default.yaml](/Users/dove/Desktop/LLM/RAG/configs/default.yaml)
-3. [src/sustech_rag/cli/main.py](/Users/dove/Desktop/LLM/RAG/src/sustech_rag/cli/main.py)
-4. [src/sustech_rag/pipeline/builders.py](/Users/dove/Desktop/LLM/RAG/src/sustech_rag/pipeline/builders.py)
-5. [src/sustech_rag/pipeline/rag_service.py](/Users/dove/Desktop/LLM/RAG/src/sustech_rag/pipeline/rag_service.py)
+1. [README.md](../README.md)
+2. [configs/default.yaml](../configs/default.yaml)
+3. [src/sustech_rag/cli/main.py](../src/sustech_rag/cli/main.py)
+4. [src/sustech_rag/pipeline/builders.py](../src/sustech_rag/pipeline/builders.py)
+5. [src/sustech_rag/pipeline/rag_service.py](../src/sustech_rag/pipeline/rag_service.py)
 6. 再根据需要看 `crawlers/`、`processing/`、`retrieval/`
 
 ## 上传 GitHub 前

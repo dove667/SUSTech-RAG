@@ -12,6 +12,7 @@ def make_crawler(tmp_path: Path) -> SiteCrawler:
         allowed_domains=["sustech.edu.cn"],
         max_pages=10,
         timeout_seconds=5,
+        # 测试中显式打开，避免依赖默认配置。
         include_pdf_links=True,
     )
     return SiteCrawler(config, tmp_path)

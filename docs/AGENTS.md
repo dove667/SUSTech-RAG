@@ -28,7 +28,7 @@ Documentation for the SUSTech Campus Knowledge Base RAG project, covering archit
 | `docs/runbook.md` | Step-by-step operational guide for setup and execution |
 
 ## DATA CONVENTIONS
-- `data/raw/`: Original HTML and PDF files from crawler
+- `data/raw/`: Original crawler outputs. Current default flow mainly uses HTML; the PDF path is retained but not enabled by default.
 - `data/interim/`: Cleaned JSONL files (docs and chunks)
 - `data/models/`: Local model storage (Embedding, Reranker, LLM)
 - `data/vector_store/`: Persistent ChromaDB index

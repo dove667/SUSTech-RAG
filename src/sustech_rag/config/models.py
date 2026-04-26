@@ -16,7 +16,8 @@ class CrawlConfig(BaseModel):
     allowed_domains: list[str]
     max_pages: int = 100
     timeout_seconds: int = 20
-    include_pdf_links: bool = True
+    # PDF 抓取逻辑作为可选开发项保留，当前项目默认关闭。
+    include_pdf_links: bool = False
 
 
 class ProcessingConfig(BaseModel):

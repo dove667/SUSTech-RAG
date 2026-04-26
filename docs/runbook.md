@@ -139,4 +139,4 @@ uv run sustech-rag query "南科大本科招生有什么特色？"
 - 增加 robots / sitemap 感知
 - 增加更强的正文抽取与语言过滤
 - 根据机器配置为 reranker / embedding 增加 device 与 batch 参数
-- 对 PDF / 招生简章做更细粒度版面处理
+- 如果后续实际抓到 PDF，再对 PDF / 招生简章做更细粒度版面处理

@@ -36,7 +36,7 @@
 ## Demo Flow
 
 ```text
-SUSTech Public Pages / PDFs
+SUSTech Public Pages
           ->
        Crawl
           ->
@@ -65,7 +65,7 @@ uv run sustech-rag query "南科大宿舍申请流程是什么？"
 
 - Runtime: `Python 3.11`
 - Package manager: `uv`
-- Crawling: `httpx + BeautifulSoup + readability-lxml + pypdf`
+- Crawling: `httpx + BeautifulSoup + readability-lxml`
 - RAG orchestration: `LlamaIndex`
 - Vector store: `ChromaDB`
 - Embedding: `BAAI/bge-small-zh-v1.5`
@@ -79,7 +79,7 @@ uv run sustech-rag query "南科大宿舍申请流程是什么？"
 configs/default.yaml          主配置
 src/sustech_rag/cli/          CLI 入口
 src/sustech_rag/crawlers/     网页抓取
-src/sustech_rag/processing/   清洗、PDF 解析、分块
+src/sustech_rag/processing/   清洗、分块、保留的 PDF 解析代码
 src/sustech_rag/indexing/     嵌入与向量索引
 src/sustech_rag/retrieval/    召回与重排序
 src/sustech_rag/llm/          llama.cpp / DashScope 后端
@@ -124,16 +124,16 @@ data/models/llm/qwen/Qwen3-8B-Q4_K_M.gguf
 
 如果你是第一次进这个仓库，建议优先看：
 
-1. [configs/default.yaml](/Users/dove/Desktop/LLM/RAG/configs/default.yaml)
-2. [src/sustech_rag/cli/main.py](/Users/dove/Desktop/LLM/RAG/src/sustech_rag/cli/main.py)
-3. [src/sustech_rag/pipeline/builders.py](/Users/dove/Desktop/LLM/RAG/src/sustech_rag/pipeline/builders.py)
-4. [src/sustech_rag/pipeline/rag_service.py](/Users/dove/Desktop/LLM/RAG/src/sustech_rag/pipeline/rag_service.py)
-5. [docs/project-guide.md](/Users/dove/Desktop/LLM/RAG/docs/project-guide.md)
+1. [configs/default.yaml](configs/default.yaml)
+2. [src/sustech_rag/cli/main.py](src/sustech_rag/cli/main.py)
+3. [src/sustech_rag/pipeline/builders.py](src/sustech_rag/pipeline/builders.py)
+4. [src/sustech_rag/pipeline/rag_service.py](src/sustech_rag/pipeline/rag_service.py)
+5. [docs/project-guide.md](docs/project-guide.md)
 
 ## 典型工作流
 
 1. `crawl`
-   抓取 HTML / PDF 原始数据并保存到本地。
+   目前默认抓取 HTML 原始数据并保存到本地。
 2. `preprocess`
    提取正文、清洗噪声、质量过滤，并切分成 chunk。
 3. `index`
@@ -143,15 +143,16 @@ data/models/llm/qwen/Qwen3-8B-Q4_K_M.gguf
 
 ## 进一步阅读
 
-- 项目结构与模块说明：[docs/project-guide.md](/Users/dove/Desktop/LLM/RAG/docs/project-guide.md)
-- 架构说明：[docs/architecture.md](/Users/dove/Desktop/LLM/RAG/docs/architecture.md)
-- 运行说明：[docs/runbook.md](/Users/dove/Desktop/LLM/RAG/docs/runbook.md)
+- 项目结构与模块说明：[docs/project-guide.md](docs/project-guide.md)
+- 架构说明：[docs/architecture.md](docs/architecture.md)
+- 运行说明：[docs/runbook.md](docs/runbook.md)
 
 ## 备注
 
 - 项目优先保证全链路清晰、可维护、跨 macOS / Windows 兼容
 - 模型和数据目录默认不提交到 GitHub
 - 真正执行抓取、模型下载和 API 调用时需要联网
+- PDF 抓取与解析代码仍然保留，但当前默认配置已关闭；在目前的学校站点测试中，crawler 也尚未实际抓到 PDF 文件
 
 ## Roadmap
 
@@ -165,8 +166,8 @@ data/models/llm/qwen/Qwen3-8B-Q4_K_M.gguf
 
 欢迎把这个仓库当作课程项目底座或继续扩展的开源原型。
 
-- 先阅读 [docs/project-guide.md](/Users/dove/Desktop/LLM/RAG/docs/project-guide.md)
-- 运行前先检查 [docs/runbook.md](/Users/dove/Desktop/LLM/RAG/docs/runbook.md)
+- 先阅读 [docs/project-guide.md](docs/project-guide.md)
+- 运行前先检查 [docs/runbook.md](docs/runbook.md)
 - 提交前尽量保持配置、文档和代码同步更新
 
-更具体的协作说明见 [CONTRIBUTING.md](/Users/dove/Desktop/LLM/RAG/CONTRIBUTING.md)。
+更具体的协作说明见 [CONTRIBUTING.md](CONTRIBUTING.md)。

@@ -2,7 +2,7 @@
 
 ## Pipeline
 
-1. `crawl`: 抓取 HTML / PDF 原始内容与元数据
+1. `crawl`: 当前默认抓取 HTML 原始内容与元数据
 2. `preprocess`: 提取正文、清洗、去重、质量过滤
 3. `chunk`: 分块并生成可索引文档
 4. `index`: 嵌入并写入 ChromaDB
@@ -12,7 +12,7 @@
 
 ```text
 data/raw/pages/         原始 HTML
-data/raw/pdfs/          原始 PDF
+data/raw/pdfs/          预留的 PDF 目录（当前默认未使用）
 data/interim/docs.jsonl 清洗后的文档
 data/interim/chunks.jsonl
 data/cache/huggingface  embedding / reranker 模型缓存

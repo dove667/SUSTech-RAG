@@ -23,6 +23,7 @@ def preprocess_documents(config: AppConfig) -> list[RawDocument]:
     docs: list[RawDocument] = []
     for row in rows:
         doc = RawDocument(**row)
+        # PDF 预处理路径保留着，但当前默认配置已关闭 PDF 抓取，因此通常不会进入这里。
         if doc.content_type == "application/pdf":
             doc.text = extract_pdf_text(Path(doc.source_path))
         doc.text = clean_text(doc.text, config.processing)

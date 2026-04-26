@@ -7,11 +7,9 @@ crawl:
   seed_urls:
     - "https://www.sustech.edu.cn/"
     - "https://admissions.sustech.edu.cn/"
-    - "https://www.sustech.edu.cn/en/"
+    - "https://lib.sustech.edu.cn/"
   allowed_domains:
-    - "www.sustech.edu.cn"
     - "sustech.edu.cn"
-    - "admissions.sustech.edu.cn"
   max_pages: 120
   timeout_seconds: 20
   include_pdf_links: true

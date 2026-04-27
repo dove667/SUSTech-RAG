@@ -3,8 +3,8 @@ from __future__ import annotations
 import re
 from collections import Counter
 
-from backend.src.sustech_rag.config.models import ProcessingConfig
-from backend.src.sustech_rag.pipeline.schemas import RawDocument
+from sustech_rag.config.models import ProcessingConfig
+from sustech_rag.pipeline.schemas import RawDocument
 
 
 def clean_text(text: str, config: ProcessingConfig) -> str:

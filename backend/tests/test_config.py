@@ -1,4 +1,4 @@
-from backend.src.sustech_rag.config.loader import load_config
+from sustech_rag.config.loader import load_config
 
 
 def test_load_config() -> None:

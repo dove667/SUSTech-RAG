@@ -5,7 +5,7 @@ from pathlib import Path
 
 import yaml
 
-from backend.src.sustech_rag.config.models import AppConfig
+from sustech_rag.config.models import AppConfig
 
 
 def resolve_config_path(config_path: str | None = None) -> Path:

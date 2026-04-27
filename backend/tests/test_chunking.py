@@ -1,5 +1,5 @@
-from backend.src.sustech_rag.pipeline.schemas import RawDocument
-from backend.src.sustech_rag.processing.chunking import chunk_document
+from sustech_rag.pipeline.schemas import RawDocument
+from sustech_rag.processing.chunking import chunk_document
 
 
 def _make_doc(text: str, title: str = "示例标题") -> RawDocument:

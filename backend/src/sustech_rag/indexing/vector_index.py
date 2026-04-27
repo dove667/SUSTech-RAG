@@ -5,9 +5,9 @@ from llama_index.core import Document, StorageContext, VectorStoreIndex
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.vector_stores.chroma import ChromaVectorStore
 
-from backend.src.sustech_rag.config.models import AppConfig
-from backend.src.sustech_rag.utils.io import read_jsonl
-from backend.src.sustech_rag.utils.runtime import prepare_model_cache
+from sustech_rag.config.models import AppConfig
+from sustech_rag.utils.io import read_jsonl
+from sustech_rag.utils.runtime import prepare_model_cache
 
 
 def build_vector_index(config: AppConfig) -> VectorStoreIndex:

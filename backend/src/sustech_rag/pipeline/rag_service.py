@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from backend.src.sustech_rag.config.models import AppConfig
-from backend.src.sustech_rag.llm.backends import build_llm_backend
-from backend.src.sustech_rag.retrieval.engine import RetrievalEngine
+from sustech_rag.config.models import AppConfig
+from sustech_rag.llm.backends import build_llm_backend
+from sustech_rag.retrieval.engine import RetrievalEngine
 
 
 class RagService:

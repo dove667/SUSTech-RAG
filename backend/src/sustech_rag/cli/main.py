@@ -4,7 +4,7 @@ from pathlib import Path
 
 import typer
 
-from backend.src.sustech_rag.config.loader import load_config
+from sustech_rag.config.loader import load_config
 
 app = typer.Typer(no_args_is_help=True, help="SUSTech campus knowledge base RAG CLI.")
 
@@ -19,7 +19,7 @@ def crawl(config: str = typer.Option(None, help="Path to YAML config file.")) ->
     输出参数：
         None：无返回值，结果通过终端输出。
     """
-    from backend.src.sustech_rag.pipeline.builders import crawl_documents
+    from sustech_rag.pipeline.builders import crawl_documents
 
     app_config = load_config(config)
     docs = crawl_documents(app_config)
@@ -35,7 +35,7 @@ def preprocess(config: str = typer.Option(None, help="Path to YAML config file."
     输出参数：
         None：无返回值，结果通过终端输出。
     """
-    from backend.src.sustech_rag.pipeline.builders import build_chunks, preprocess_documents
+    from sustech_rag.pipeline.builders import build_chunks, preprocess_documents
 
     app_config = load_config(config)
     docs = preprocess_documents(app_config)
@@ -52,7 +52,7 @@ def index(config: str = typer.Option(None, help="Path to YAML config file.")) ->
     输出参数：
         None：无返回值，结果通过终端输出。
     """
-    from backend.src.sustech_rag.indexing.vector_index import build_vector_index
+    from sustech_rag.indexing.vector_index import build_vector_index
 
     app_config = load_config(config)
     _ = build_vector_index(app_config)
@@ -72,7 +72,7 @@ def query(
     输出参数：
         None：无返回值，答案通过终端输出。
     """
-    from backend.src.sustech_rag.pipeline.rag_service import RagService
+    from sustech_rag.pipeline.rag_service import RagService
 
     app_config = load_config(config)
     service = RagService(app_config)

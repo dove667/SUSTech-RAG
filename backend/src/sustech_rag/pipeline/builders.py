@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from backend.src.sustech_rag.config.models import AppConfig
-from backend.src.sustech_rag.crawlers.site_crawler import SiteCrawler
-from backend.src.sustech_rag.pipeline.schemas import ChunkedDocument, RawDocument
-from backend.src.sustech_rag.processing.chunking import chunk_document
-from backend.src.sustech_rag.processing.cleaning import build_effective_text, is_high_quality
-from backend.src.sustech_rag.processing.pdf_parser import extract_pdf_text
-from backend.src.sustech_rag.utils.io import read_jsonl, write_jsonl
+from sustech_rag.config.models import AppConfig
+from sustech_rag.crawlers.site_crawler import SiteCrawler
+from sustech_rag.pipeline.schemas import ChunkedDocument, RawDocument
+from sustech_rag.processing.chunking import chunk_document
+from sustech_rag.processing.cleaning import build_effective_text, is_high_quality
+from sustech_rag.processing.pdf_parser import extract_pdf_text
+from sustech_rag.utils.io import read_jsonl, write_jsonl
 
 
 def crawl_documents(config: AppConfig) -> list[RawDocument]:

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from backend.src.sustech_rag.config.models import (
+from sustech_rag.config.models import (
     AppConfig,
     CrawlConfig,
     DashScopeLLMConfig,
@@ -12,8 +12,8 @@ from backend.src.sustech_rag.config.models import (
     RetrievalConfig,
     VectorStoreConfig,
 )
-from backend.src.sustech_rag.pipeline.builders import build_chunks, preprocess_documents
-from backend.src.sustech_rag.utils.io import read_jsonl, write_jsonl
+from sustech_rag.pipeline.builders import build_chunks, preprocess_documents
+from sustech_rag.utils.io import read_jsonl, write_jsonl
 
 
 def _make_config(tmp_path: Path) -> AppConfig:

@@ -7,8 +7,8 @@ from pathlib import Path
 
 import dashscope
 
-from backend.src.sustech_rag.config.models import AppConfig
-from backend.src.sustech_rag.utils.platform import default_llama_binary_name, is_windows
+from sustech_rag.config.models import AppConfig
+from sustech_rag.utils.platform import default_llama_binary_name, is_windows
 
 
 class LLMBackend(ABC):

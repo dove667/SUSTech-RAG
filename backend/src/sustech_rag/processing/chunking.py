@@ -4,7 +4,7 @@ import re
 
 from llama_index.core.node_parser import SentenceSplitter
 
-from backend.src.sustech_rag.pipeline.schemas import ChunkedDocument, RawDocument
+from sustech_rag.pipeline.schemas import ChunkedDocument, RawDocument
 
 
 def chunk_document(doc: RawDocument, chunk_size: int, chunk_overlap: int) -> list[ChunkedDocument]:

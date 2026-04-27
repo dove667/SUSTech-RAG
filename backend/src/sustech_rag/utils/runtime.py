@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from backend.src.sustech_rag.utils.io import ensure_dir
+from sustech_rag.utils.io import ensure_dir
 
 
 def prepare_model_cache(base_dir: Path) -> Path:

@@ -1,6 +1,6 @@
-from backend.src.sustech_rag.config.models import ProcessingConfig
-from backend.src.sustech_rag.pipeline.schemas import RawDocument
-from backend.src.sustech_rag.processing.cleaning import (
+from sustech_rag.config.models import ProcessingConfig
+from sustech_rag.pipeline.schemas import RawDocument
+from sustech_rag.processing.cleaning import (
     build_effective_text,
     clean_text,
     is_high_quality,

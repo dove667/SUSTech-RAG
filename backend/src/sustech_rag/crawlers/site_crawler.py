@@ -8,9 +8,9 @@ from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 import httpx
 from bs4 import BeautifulSoup
 
-from backend.src.sustech_rag.config.models import CrawlConfig
-from backend.src.sustech_rag.pipeline.schemas import RawDocument
-from backend.src.sustech_rag.utils.io import ensure_dir
+from sustech_rag.config.models import CrawlConfig
+from sustech_rag.pipeline.schemas import RawDocument
+from sustech_rag.utils.io import ensure_dir
 
 try:
     from readability import Document

@@ -1,8 +1,8 @@
 from pathlib import Path
 
-import backend.src.sustech_rag.crawlers.site_crawler as site_crawler_module
-from backend.src.sustech_rag.config.models import CrawlConfig
-from backend.src.sustech_rag.crawlers.site_crawler import SiteCrawler
+import sustech_rag.crawlers.site_crawler as site_crawler_module
+from sustech_rag.config.models import CrawlConfig
+from sustech_rag.crawlers.site_crawler import SiteCrawler
 
 
 def make_crawler(tmp_path: Path) -> SiteCrawler:

@@ -1,0 +1,689 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>SUSTech Logo 二值化 / 配色工具</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f6f7f9;
+        --panel: #ffffff;
+        --border: #e5e7eb;
+        --text: #111827;
+        --muted: #6b7280;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0f172a;
+          --panel: #1e293b;
+          --border: #334155;
+          --text: #e2e8f0;
+          --muted: #94a3b8;
+        }
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        min-height: 100vh;
+        padding: 24px;
+      }
+      h1 {
+        font-size: 22px;
+        margin: 0 0 4px;
+      }
+      .sub {
+        color: var(--muted);
+        font-size: 13px;
+        margin-bottom: 20px;
+      }
+      .layout {
+        display: grid;
+        grid-template-columns: 340px 1fr;
+        gap: 20px;
+      }
+      @media (max-width: 900px) {
+        .layout { grid-template-columns: 1fr; }
+      }
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 16px;
+      }
+      .row { margin-bottom: 14px; }
+      label {
+        display: block;
+        font-size: 13px;
+        font-weight: 600;
+        margin-bottom: 6px;
+      }
+      input[type="range"] { width: 100%; }
+      input[type="color"] {
+        width: 48px;
+        height: 36px;
+        padding: 0;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: transparent;
+        cursor: pointer;
+      }
+      input[type="file"] { font-size: 13px; }
+      .color-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .color-row input[type="text"] {
+        flex: 1;
+        padding: 7px 9px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: transparent;
+        color: var(--text);
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 13px;
+      }
+      .presets {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+      }
+      .preset {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: transparent;
+        color: var(--text);
+        cursor: pointer;
+        font-size: 12px;
+        text-align: left;
+      }
+      .preset:hover { border-color: #6366f1; }
+      .swatches {
+        display: flex;
+        gap: 4px;
+      }
+      .sw {
+        width: 14px;
+        height: 14px;
+        border-radius: 3px;
+        border: 1px solid rgba(0, 0, 0, 0.1);
+      }
+      .btn {
+        display: inline-block;
+        padding: 8px 14px;
+        background: #6366f1;
+        color: #fff;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .btn:hover { background: #4f46e5; }
+      .btn.secondary {
+        background: transparent;
+        color: var(--text);
+        border: 1px solid var(--border);
+      }
+      .preview {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+        align-items: flex-start;
+      }
+      .preview-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+      }
+      .preview-item canvas {
+        max-width: 256px;
+        height: auto;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        image-rendering: auto;
+      }
+      .preview-item .name {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .val {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px;
+        color: var(--muted);
+        margin-left: 6px;
+      }
+      .switch {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>SUSTech Logo 二值化 / 配色工具</h1>
+    <div class="sub">
+      先按亮度阈值分离前景/背景,再通过<strong>超采样缩小</strong>与可选的<strong>边缘柔和</strong>减轻锯齿;导出为带平滑过渡的 PNG。
+    </div>
+
+    <div class="layout">
+      <div class="panel">
+        <div class="row">
+          <label>图片</label>
+          <input id="file" type="file" accept="image/*" />
+          <div class="sub" style="margin-top:6px">默认加载 src/assets/sustech.png</div>
+        </div>
+
+        <div class="row">
+          <label>
+            亮度阈值 <span class="val" id="thVal">128</span>
+          </label>
+          <input id="threshold" type="range" min="0" max="255" value="128" />
+        </div>
+
+        <div class="row">
+          <label>
+            超采样倍数 <span class="val" id="ssVal">4×</span>
+            <span class="val" style="font-weight:400">(越高边缘越平滑,略费性能)</span>
+          </label>
+          <input id="superSample" type="range" min="1" max="4" value="4" step="1" />
+        </div>
+
+        <div class="row">
+          <label>
+            边缘过渡 <span class="val" id="edgeVal">4</span>
+            <span class="val" style="font-weight:400">(高分辨率下亮度过渡宽度,0=硬边)</span>
+          </label>
+          <input id="edgeSoft" type="range" min="0" max="24" value="4" step="1" />
+        </div>
+
+        <div class="row">
+          <label class="switch">
+            <input id="useAlpha" type="checkbox" checked />
+            使用 Alpha 通道做二值(透明区视为背景)
+          </label>
+        </div>
+
+        <div class="row">
+          <label class="switch">
+            <input id="invert" type="checkbox" />
+            反相(交换前景与背景)
+          </label>
+        </div>
+
+        <div class="row">
+          <label>前景色(Logo 主色)</label>
+          <div class="color-row">
+            <input id="fgColor" type="color" value="#ea580c" />
+            <input id="fgText" type="text" value="#ea580c" />
+          </div>
+        </div>
+
+        <div class="row">
+          <label>背景色</label>
+          <div class="color-row">
+            <input id="bgColor" type="color" value="#ffffff" />
+            <input id="bgText" type="text" value="#ffffff" />
+          </div>
+        </div>
+
+        <div class="row">
+          <label class="switch">
+            <input id="transparentBg" type="checkbox" />
+            背景透明(导出带透明通道的 PNG)
+          </label>
+        </div>
+
+        <div class="row">
+          <label>预设配色</label>
+          <div class="presets" id="presets"></div>
+        </div>
+
+        <div class="row" style="display:flex; gap:8px; flex-wrap:wrap">
+          <button class="btn" id="download">下载当前配色</button>
+          <button class="btn secondary" id="downloadAll">导出全部预设</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <label style="margin-bottom:10px">当前预览</label>
+        <div class="preview">
+          <div class="preview-item">
+            <canvas id="origCanvas"></canvas>
+            <div class="name">原图</div>
+          </div>
+          <div class="preview-item">
+            <canvas id="binCanvas"></canvas>
+            <div class="name">二值(抗锯齿灰度)</div>
+          </div>
+          <div class="preview-item">
+            <canvas id="outCanvas"></canvas>
+            <div class="name">配色结果</div>
+          </div>
+        </div>
+
+        <label style="margin:18px 0 10px">预设配色一览</label>
+        <div class="preview" id="gallery"></div>
+      </div>
+    </div>
+
+    <script>
+      const PRESETS = [
+        { name: "SUSTech 橙 / 白",  fg: "#ea580c", bg: "#ffffff" },
+        { name: "SUSTech 橙 / 黑",  fg: "#ea580c", bg: "#111111" },
+        { name: "经典黑 / 白",      fg: "#111111", bg: "#ffffff" },
+        { name: "白 / 黑",          fg: "#ffffff", bg: "#111111" },
+        { name: "宝石蓝 / 白",      fg: "#1d4ed8", bg: "#ffffff" },
+        { name: "墨绿 / 米白",      fg: "#065f46", bg: "#f5f5dc" },
+        { name: "品红 / 奶油",      fg: "#be185d", bg: "#fff7ed" },
+        { name: "金 / 深蓝",        fg: "#f59e0b", bg: "#0c1e3a" },
+        { name: "青 / 深灰",        fg: "#06b6d4", bg: "#0f172a" },
+        { name: "紫 / 浅灰",        fg: "#7c3aed", bg: "#f3f4f6" },
+        { name: "红 / 米色",        fg: "#dc2626", bg: "#fef3c7" },
+        { name: "荧光绿 / 黑",      fg: "#22d3ee", bg: "#000000" },
+      ];
+
+      const $ = (id) => document.getElementById(id);
+      const fileInput = $("file");
+      const threshold = $("threshold");
+      const thVal = $("thVal");
+      const superSample = $("superSample");
+      const ssVal = $("ssVal");
+      const edgeSoft = $("edgeSoft");
+      const edgeVal = $("edgeVal");
+      const useAlpha = $("useAlpha");
+      const invert = $("invert");
+      const fgColor = $("fgColor");
+      const bgColor = $("bgColor");
+      const fgText = $("fgText");
+      const bgText = $("bgText");
+      const transparentBg = $("transparentBg");
+      const origCanvas = $("origCanvas");
+      const binCanvas = $("binCanvas");
+      const outCanvas = $("outCanvas");
+      const presetsEl = $("presets");
+      const gallery = $("gallery");
+
+      let sourceImage = null;
+      let sourceImageData = null;
+
+      function hexToRgb(hex) {
+        hex = hex.replace("#", "");
+        if (hex.length === 3) {
+          hex = hex.split("").map((c) => c + c).join("");
+        }
+        const n = parseInt(hex, 16);
+        return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+      }
+
+      function drawToCanvas(canvas, img) {
+        canvas.width = img.naturalWidth || img.width;
+        canvas.height = img.naturalHeight || img.height;
+        const ctx = canvas.getContext("2d");
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0);
+        return ctx.getImageData(0, 0, canvas.width, canvas.height);
+      }
+
+      function getLuminance(r, g, b) {
+        return 0.299 * r + 0.587 * g + 0.114 * b;
+      }
+
+      /** 0..1, 前景覆盖: 暗部趋近 1 */
+      function smoothCoverage(lum, th, edge) {
+        if (edge <= 0) return lum < th ? 1 : 0;
+        const t = (th - lum) / edge;
+        const x = Math.max(0, Math.min(1, t));
+        return x * x * (3 - 2 * x);
+      }
+
+      function coveragePixel(r, g, b, a, th, useA, edge) {
+        if (useA && a < 128) return 0;
+        const lum = getLuminance(r, g, b);
+        return smoothCoverage(lum, th, edge);
+      }
+
+      function upscaleImageData(sourceImageData, scale) {
+        const w = sourceImageData.width;
+        const h = sourceImageData.height;
+        if (scale <= 1) return sourceImageData;
+        const c = document.createElement("canvas");
+        c.width = w;
+        c.height = h;
+        c.getContext("2d").putImageData(sourceImageData, 0, 0);
+        const out = document.createElement("canvas");
+        out.width = w * scale;
+        out.height = h * scale;
+        const octx = out.getContext("2d");
+        octx.imageSmoothingEnabled = true;
+        octx.imageSmoothingQuality = "high";
+        octx.drawImage(c, 0, 0, w, h, 0, 0, w * scale, h * scale);
+        return octx.getImageData(0, 0, w * scale, h * scale);
+      }
+
+      function highResCoverageImageData(highData, th, useA, edge) {
+        const { width, height, data } = highData;
+        const out = new ImageData(width, height);
+        for (let i = 0; i < data.length; i += 4) {
+          const cov = coveragePixel(
+            data[i],
+            data[i + 1],
+            data[i + 2],
+            data[i + 3],
+            th,
+            useA,
+            edge
+          );
+          const v = Math.round(cov * 255);
+          out.data[i] = v;
+          out.data[i + 1] = v;
+          out.data[i + 2] = v;
+          out.data[i + 3] = 255;
+        }
+        return out;
+      }
+
+      function downscaleGrayImageData(highGrayImageData, tw, th) {
+        const c = document.createElement("canvas");
+        c.width = highGrayImageData.width;
+        c.height = highGrayImageData.height;
+        c.getContext("2d").putImageData(highGrayImageData, 0, 0);
+        const out = document.createElement("canvas");
+        out.width = tw;
+        out.height = th;
+        const ctx = out.getContext("2d");
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(
+          c,
+          0,
+          0,
+          highGrayImageData.width,
+          highGrayImageData.height,
+          0,
+          0,
+          tw,
+          th
+        );
+        return ctx.getImageData(0, 0, tw, th);
+      }
+
+      /**
+       * R=G=B = 前景覆盖率×255, 经超采样缩小后边缘为中间灰,减轻锯齿。
+       */
+      function buildCoverageImageData(sourceImageData, th, useA, scale, edge) {
+        const w = sourceImageData.width;
+        const h = sourceImageData.height;
+        const up = upscaleImageData(sourceImageData, scale);
+        const high = highResCoverageImageData(up, th, useA, edge);
+        if (scale <= 1) return high;
+        return downscaleGrayImageData(high, w, h);
+      }
+
+      /** 白底黑字预览: 覆盖率越大越黑 */
+      function renderBinaryFromCoverage(covImageData) {
+        const { width, height, data } = covImageData;
+        const out = new ImageData(width, height);
+        for (let i = 0; i < data.length; i += 4) {
+          const cov = data[i] / 255;
+          const v = Math.round(255 * (1 - cov));
+          out.data[i] = v;
+          out.data[i + 1] = v;
+          out.data[i + 2] = v;
+          out.data[i + 3] = 255;
+        }
+        return out;
+      }
+
+      function renderColoredFromCoverage(
+        covImageData,
+        fgHex,
+        bgHex,
+        inv,
+        transBg
+      ) {
+        const [fr, fg, fb] = hexToRgb(fgHex);
+        const [br, bg, bb] = hexToRgb(bgHex);
+        const { width, height, data } = covImageData;
+        const out = new ImageData(width, height);
+        for (let i = 0; i < data.length; i += 4) {
+          let cov = data[i] / 255;
+          if (inv) cov = 1 - cov;
+          if (transBg) {
+            out.data[i] = fr;
+            out.data[i + 1] = fg;
+            out.data[i + 2] = fb;
+            out.data[i + 3] = Math.round(cov * 255);
+          } else {
+            out.data[i] = Math.round(fr * cov + br * (1 - cov));
+            out.data[i + 1] = Math.round(fg * cov + bg * (1 - cov));
+            out.data[i + 2] = Math.round(fb * cov + bb * (1 - cov));
+            out.data[i + 3] = 255;
+          }
+        }
+        return out;
+      }
+
+      function putImageData(canvas, imgData) {
+        canvas.width = imgData.width;
+        canvas.height = imgData.height;
+        canvas.getContext("2d").putImageData(imgData, 0, 0);
+      }
+
+      function update() {
+        if (!sourceImageData) return;
+        thVal.textContent = threshold.value;
+        const th = parseInt(threshold.value, 10);
+        const useA = useAlpha.checked;
+        const scale = parseInt(superSample.value, 10);
+        const edge = parseInt(edgeSoft.value, 10);
+        ssVal.textContent = scale + "×";
+        edgeVal.textContent = edge;
+
+        const cov = buildCoverageImageData(
+          sourceImageData,
+          th,
+          useA,
+          scale,
+          edge
+        );
+        putImageData(binCanvas, renderBinaryFromCoverage(cov));
+        putImageData(
+          outCanvas,
+          renderColoredFromCoverage(
+            cov,
+            fgColor.value,
+            bgColor.value,
+            invert.checked,
+            transparentBg.checked
+          )
+        );
+        renderGallery(cov);
+      }
+
+      function renderGallery(cov) {
+        gallery.innerHTML = "";
+        PRESETS.forEach((p) => {
+          const wrap = document.createElement("div");
+          wrap.className = "preview-item";
+          const c = document.createElement("canvas");
+          c.style.maxWidth = "140px";
+          putImageData(
+            c,
+            renderColoredFromCoverage(
+              cov,
+              p.fg,
+              p.bg,
+              invert.checked,
+              false
+            )
+          );
+          const name = document.createElement("div");
+          name.className = "name";
+          name.textContent = p.name;
+          wrap.appendChild(c);
+          wrap.appendChild(name);
+          wrap.title = `点击应用: ${p.name}`;
+          wrap.style.cursor = "pointer";
+          wrap.onclick = () => applyPreset(p);
+          gallery.appendChild(wrap);
+        });
+      }
+
+      function buildPresetButtons() {
+        PRESETS.forEach((p) => {
+          const b = document.createElement("button");
+          b.className = "preset";
+          b.innerHTML =
+            `<span class="swatches">` +
+            `<span class="sw" style="background:${p.fg}"></span>` +
+            `<span class="sw" style="background:${p.bg}"></span>` +
+            `</span><span>${p.name}</span>`;
+          b.onclick = () => applyPreset(p);
+          presetsEl.appendChild(b);
+        });
+      }
+
+      function applyPreset(p) {
+        fgColor.value = p.fg;
+        fgText.value = p.fg;
+        bgColor.value = p.bg;
+        bgText.value = p.bg;
+        update();
+      }
+
+      function syncColorText(colorEl, textEl) {
+        colorEl.addEventListener("input", () => {
+          textEl.value = colorEl.value;
+          update();
+        });
+        textEl.addEventListener("change", () => {
+          const v = textEl.value.trim();
+          if (/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v)) {
+            colorEl.value = v.length === 4
+              ? "#" + v.slice(1).split("").map((c) => c + c).join("")
+              : v;
+            update();
+          }
+        });
+      }
+
+      function loadImage(src) {
+        return new Promise((resolve, reject) => {
+          const img = new Image();
+          img.crossOrigin = "anonymous";
+          img.onload = () => {
+            sourceImage = img;
+            sourceImageData = drawToCanvas(origCanvas, img);
+            update();
+            resolve(img);
+          };
+          img.onerror = () => reject(new Error("load fail: " + src));
+          img.src = src;
+        });
+      }
+
+      async function loadDefault() {
+        const candidates = [
+          "/src/assets/sustech.png",
+          "../src/assets/sustech.png",
+          "./sustech.png",
+          "sustech.png",
+        ];
+        for (const url of candidates) {
+          try {
+            await loadImage(url);
+            return;
+          } catch (e) {
+            // try next
+          }
+        }
+        console.warn("默认图片未找到,请使用上方文件选择器手动上传。");
+      }
+
+      function downloadCanvas(canvas, filename) {
+        canvas.toBlob((blob) => {
+          const a = document.createElement("a");
+          a.href = URL.createObjectURL(blob);
+          a.download = filename;
+          a.click();
+          setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+        }, "image/png");
+      }
+
+      $("download").onclick = () => {
+        downloadCanvas(
+          outCanvas,
+          `sustech_${fgColor.value.slice(1)}_${bgColor.value.slice(1)}.png`
+        );
+      };
+
+      $("downloadAll").onclick = async () => {
+        if (!sourceImageData) return;
+        const th = parseInt(threshold.value, 10);
+        const useA = useAlpha.checked;
+        const scale = parseInt(superSample.value, 10);
+        const edge = parseInt(edgeSoft.value, 10);
+        const cov = buildCoverageImageData(
+          sourceImageData,
+          th,
+          useA,
+          scale,
+          edge
+        );
+        const tmp = document.createElement("canvas");
+        for (const p of PRESETS) {
+          const data = renderColoredFromCoverage(
+            cov,
+            p.fg,
+            p.bg,
+            invert.checked,
+            false
+          );
+          putImageData(tmp, data);
+          await new Promise((resolve) => {
+            tmp.toBlob((blob) => {
+              const a = document.createElement("a");
+              a.href = URL.createObjectURL(blob);
+              a.download = `sustech_${p.fg.slice(1)}_${p.bg.slice(1)}.png`;
+              a.click();
+              setTimeout(() => {
+                URL.revokeObjectURL(a.href);
+                resolve();
+              }, 400);
+            }, "image/png");
+          });
+        }
+      };
+
+      fileInput.addEventListener("change", (e) => {
+        const f = e.target.files?.[0];
+        if (!f) return;
+        const url = URL.createObjectURL(f);
+        loadImage(url);
+      });
+
+      threshold.addEventListener("input", update);
+      superSample.addEventListener("input", update);
+      edgeSoft.addEventListener("input", update);
+      useAlpha.addEventListener("change", update);
+      invert.addEventListener("change", update);
+      transparentBg.addEventListener("change", update);
+      syncColorText(fgColor, fgText);
+      syncColorText(bgColor, bgText);
+
+      buildPresetButtons();
+      loadDefault();
+    </script>
+  </body>
+</html>

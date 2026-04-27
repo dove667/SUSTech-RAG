@@ -25,11 +25,12 @@ class RetrievalEngine:
         输出参数：无。
         """
         self.config = config
-        prepare_model_cache(config.project.data_dir)
+        huggingface_dir = prepare_model_cache(config.project.data_dir)
         model_ref = config.embedding.local_path or config.embedding.model_name
         Settings.embed_model = HuggingFaceEmbedding(
             model_name=model_ref,
-            cache_folder=str(config.project.data_dir / "cache" / "huggingface"),
+            cache_folder=str(huggingface_dir),
+            embed_batch_size=config.embedding.batch_size,
         )
         client = chromadb.PersistentClient(path=str(config.vector_store.persist_dir))
         collection = client.get_or_create_collection(config.vector_store.collection_name)

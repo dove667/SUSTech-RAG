@@ -10,15 +10,30 @@ from sustech_rag.utils.io import read_jsonl
 from sustech_rag.utils.runtime import prepare_model_cache
 
 
-def build_vector_index(config: AppConfig) -> VectorStoreIndex:
+def build_vector_index(config: AppConfig, rebuild: bool = False) -> VectorStoreIndex:
     """
     根据配置读取分块数据、初始化向量模型与 Chroma 向量库，并构建向量索引。
     输入参数：
         config: 应用配置对象，包含数据目录、embedding 配置与向量库配置。
+        rebuild: 是否重建索引。若为 True，先删除已有 collection 再重新构建。
     输出参数：
         VectorStoreIndex: 构建完成的 LlamaIndex 向量索引对象。
     """
-    prepare_model_cache(config.project.data_dir)
+    huggingface_dir = prepare_model_cache(config.project.data_dir)
+    model_ref = config.embedding.local_path or config.embedding.model_name
+    embed_model = HuggingFaceEmbedding(
+        model_name=model_ref,
+        cache_folder=str(huggingface_dir),
+        embed_batch_size=config.embedding.batch_size,
+    )
+    chroma_client = chromadb.PersistentClient(path=str(config.vector_store.persist_dir))
+    if rebuild:
+        try:
+            chroma_client.delete_collection(config.vector_store.collection_name)
+        except ValueError:
+            # Chroma raises when the collection does not exist yet.
+            pass
+    collection = chroma_client.get_or_create_collection(config.vector_store.collection_name)
     chunks = read_jsonl(config.project.data_dir / "interim" / "chunks.jsonl")
     documents = [
         Document(
@@ -33,13 +48,6 @@ def build_vector_index(config: AppConfig) -> VectorStoreIndex:
         )
         for row in chunks
     ]
-    model_ref = config.embedding.local_path or config.embedding.model_name
-    embed_model = HuggingFaceEmbedding(
-        model_name=model_ref,
-        cache_folder=str(config.project.data_dir / "cache" / "huggingface"),
-    )
-    chroma_client = chromadb.PersistentClient(path=str(config.vector_store.persist_dir))
-    collection = chroma_client.get_or_create_collection(config.vector_store.collection_name)
     vector_store = ChromaVectorStore(chroma_collection=collection)
     storage_context = StorageContext.from_defaults(vector_store=vector_store)
     return VectorStoreIndex.from_documents(

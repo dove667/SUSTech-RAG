@@ -44,18 +44,22 @@ def preprocess(config: str = typer.Option(None, help="Path to YAML config file."
 
 
 @app.command()
-def index(config: str = typer.Option(None, help="Path to YAML config file.")) -> None:
+def index(
+    config: str = typer.Option(None, help="Path to YAML config file."),
+    rebuild: bool = typer.Option(False, "--rebuild", help="Delete existing collection before building index."),
+) -> None:
     """
     构建向量索引，并输出索引持久化目录信息。
     输入参数：
         config：YAML 配置文件路径，用于加载索引相关配置。
+        rebuild：是否重建索引，若为 True 则先删除已有 collection。
     输出参数：
         None：无返回值，结果通过终端输出。
     """
     from sustech_rag.indexing.vector_index import build_vector_index
 
     app_config = load_config(config)
-    _ = build_vector_index(app_config)
+    _ = build_vector_index(app_config, rebuild=rebuild)
     typer.echo(f"Indexed chunks into {app_config.vector_store.persist_dir}.")
 
 

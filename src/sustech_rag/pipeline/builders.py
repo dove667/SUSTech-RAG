@@ -12,6 +12,13 @@ from sustech_rag.utils.io import read_jsonl, write_jsonl
 
 
 def crawl_documents(config: AppConfig) -> list[RawDocument]:
+    """
+    抓取站点文档并写入原始文档清单。
+    输入参数：
+        config: 应用配置对象。
+    输出参数：
+        list[RawDocument]: 抓取到的原始文档列表。
+    """
     crawler = SiteCrawler(config.crawl, config.project.data_dir)
     docs = crawler.crawl()
     write_jsonl(_raw_manifest_path(config), [doc.to_dict() for doc in docs])
@@ -19,6 +26,13 @@ def crawl_documents(config: AppConfig) -> list[RawDocument]:
 
 
 def preprocess_documents(config: AppConfig) -> list[RawDocument]:
+    """
+    读取原始文档并执行清洗、过滤与文本重建。
+    输入参数：
+        config: 应用配置对象。
+    输出参数：
+        list[RawDocument]: 预处理后保留的原始文档列表。
+    """
     rows = read_jsonl(_raw_manifest_path(config))
     docs: list[RawDocument] = []
     for row in rows:
@@ -34,6 +48,13 @@ def preprocess_documents(config: AppConfig) -> list[RawDocument]:
 
 
 def build_chunks(config: AppConfig) -> list[ChunkedDocument]:
+    """
+    将清洗后的文档切分为文本块并持久化结果。
+    输入参数：
+        config: 应用配置对象。
+    输出参数：
+        list[ChunkedDocument]: 生成的文本块列表。
+    """
     rows = read_jsonl(_clean_docs_path(config))
     docs = [RawDocument(**row) for row in rows]
     chunks: list[ChunkedDocument] = []
@@ -50,12 +71,33 @@ def build_chunks(config: AppConfig) -> list[ChunkedDocument]:
 
 
 def _raw_manifest_path(config: AppConfig) -> Path:
+    """
+    构造原始文档清单文件路径。
+    输入参数：
+        config: 应用配置对象。
+    输出参数：
+        Path: 原始文档清单文件路径。
+    """
     return config.project.data_dir / "raw" / "raw_documents.jsonl"
 
 
 def _clean_docs_path(config: AppConfig) -> Path:
+    """
+    构造清洗后文档文件路径。
+    输入参数：
+        config: 应用配置对象。
+    输出参数：
+        Path: 清洗后文档文件路径。
+    """
     return config.project.data_dir / "interim" / "documents.cleaned.jsonl"
 
 
 def _chunks_path(config: AppConfig) -> Path:
+    """
+    构造文本块输出文件路径。
+    输入参数：
+        config: 应用配置对象。
+    输出参数：
+        Path: 文本块输出文件路径。
+    """
     return config.project.data_dir / "interim" / "chunks.jsonl"

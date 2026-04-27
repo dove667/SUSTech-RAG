@@ -7,6 +7,12 @@ from sentence_transformers import CrossEncoder
 
 @dataclass(slots=True)
 class RetrievedChunk:
+    """
+    表示检索或重排序流程中的文本片段结果。
+    输入参数：无。
+    输出参数：RetrievedChunk 实例，包含文本、分数和元数据。
+    """
+
     text: str
     score: float
     metadata: dict
@@ -14,10 +20,25 @@ class RetrievedChunk:
 
 class BGECrossEncoderReranker:
     def __init__(self, model_name: str) -> None:
+        """
+        加载 BGE CrossEncoder 模型用于候选片段重排序。
+        输入参数：
+            model_name：交叉编码器模型名称或本地路径。
+        输出参数：无。
+        """
         self.model_name = model_name
         self.model = CrossEncoder(model_name, trust_remote_code=True)
 
     def rerank(self, query: str, candidates: list[RetrievedChunk], top_n: int) -> list[RetrievedChunk]:
+        """
+        根据查询语义对候选片段进行重排序并截取前 N 条。
+        输入参数：
+            query：用户查询文本。
+            candidates：待重排序的候选片段列表。
+            top_n：返回结果的最大数量。
+        输出参数：
+            list[RetrievedChunk]：按相关性从高到低排序后的片段列表。
+        """
         if not candidates:
             return []
         pairs = [[query, item.text] for item in candidates]

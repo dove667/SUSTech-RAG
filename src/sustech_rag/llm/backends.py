@@ -12,13 +12,32 @@ from sustech_rag.utils.platform import default_llama_binary_name, is_windows
 
 
 class LLMBackend(ABC):
+    """
+    LLM 后端抽象基类。
+    定义所有大语言模型后端的统一接口。
+    输入参数：无。
+    输出参数：用于实现统一生成能力的后端抽象对象。
+    """
+
     @abstractmethod
     def generate(self, prompt: str) -> str:
+        """
+        生成文本结果。
+        接收提示词并返回模型生成内容的统一接口。
+        输入参数：prompt，用户输入的提示词文本。
+        输出参数：模型生成的文本结果。
+        """
         raise NotImplementedError
 
 
 class LlamaCppBackend(LLMBackend):
     def __init__(self, config: AppConfig) -> None:
+        """
+        初始化 llama.cpp 后端。
+        根据配置和环境变量准备本地 llama.cpp 推理所需参数。
+        输入参数：config，应用配置对象，包含 LLM 本地后端相关设置。
+        输出参数：无，完成实例属性初始化。
+        """
         local = config.llm.local
         self.binary = self._resolve_binary_path(
             os.getenv("LLAMA_CPP_BINARY") or local.binary_path or default_llama_binary_name()
@@ -38,6 +57,12 @@ class LlamaCppBackend(LLMBackend):
         self.extra_args = local.extra_args
 
     def generate(self, prompt: str) -> str:
+        """
+        调用 llama.cpp 生成文本。
+        组装命令行参数并执行本地 llama.cpp 进程生成回复。
+        输入参数：prompt，用户输入的提示词文本。
+        输出参数：llama.cpp 返回并清理后的文本结果。
+        """
         if not self.model_path:
             raise ValueError("llama.cpp model path is not configured.")
         cmd = [self.binary]
@@ -61,12 +86,24 @@ class LlamaCppBackend(LLMBackend):
         return completed.stdout.strip()
 
     def _resolve_binary_path(self, raw: str) -> str:
+        """
+        解析 llama.cpp 可执行文件路径。
+        在 Windows 环境下自动补全 .exe 后缀并返回可执行路径。
+        输入参数：raw，原始二进制文件路径或文件名。
+        输出参数：解析后的可执行文件路径。
+        """
         path = Path(raw)
         if is_windows() and not path.suffix and path.with_suffix(".exe").exists():
             return str(path.with_suffix(".exe"))
         return raw
 
     def _build_runtime_args(self) -> list[str]:
+        """
+        构建 llama.cpp 运行参数。
+        根据设备模式、GPU 层数、线程数及输出模式生成运行参数列表。
+        输入参数：无。
+        输出参数：llama.cpp 命令行参数列表。
+        """
         args: list[str] = []
         device_arg = self._resolve_device_arg()
         if device_arg is not None:
@@ -86,6 +123,12 @@ class LlamaCppBackend(LLMBackend):
         return args
 
     def _resolve_device_arg(self) -> str | None:
+        """
+        解析设备参数值。
+        将配置中的 device_mode 转换为 llama.cpp 可接受的 --device 参数。
+        输入参数：无。
+        输出参数：可用的设备参数字符串，或在自动模式下返回 None。
+        """
         mode = self.device_mode.lower().strip()
         if mode in {"", "auto"}:
             return None
@@ -102,11 +145,23 @@ class LlamaCppBackend(LLMBackend):
 
 class DashScopeBackend(LLMBackend):
     def __init__(self, config: AppConfig) -> None:
+        """
+        初始化 DashScope 后端。
+        读取 DashScope 模型配置并设置 API 密钥。
+        输入参数：config，应用配置对象，包含 DashScope 相关设置。
+        输出参数：无，完成实例属性初始化。
+        """
         self.model = config.llm.dashscope.model
         self.temperature = config.llm.dashscope.temperature
         dashscope.api_key = os.getenv("DASHSCOPE_API_KEY", "")
 
     def generate(self, prompt: str) -> str:
+        """
+        调用 DashScope 生成文本。
+        通过 DashScope Generation API 发送提示词并返回生成结果。
+        输入参数：prompt，用户输入的提示词文本。
+        输出参数：DashScope 返回并清理后的文本结果。
+        """
         response = dashscope.Generation.call(
             model=self.model,
             prompt=prompt,
@@ -116,6 +171,12 @@ class DashScopeBackend(LLMBackend):
 
 
 def build_llm_backend(config: AppConfig) -> LLMBackend:
+    """
+    构建 LLM 后端实例。
+    根据配置选择并创建 DashScope 或 llama.cpp 后端实现。
+    输入参数：config，应用配置对象，包含 LLM 后端类型与参数。
+    输出参数：已初始化的 LLMBackend 实例。
+    """
     if config.llm.backend == "dashscope":
         return DashScopeBackend(config)
     return LlamaCppBackend(config)

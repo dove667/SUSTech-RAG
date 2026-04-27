@@ -1,6 +1,8 @@
 #!/bin/bash
 app_env=${1:-development}
 
+cd frontend
+
 # Development environment commands
 dev_commands() {
     echo "Running Vue development environment with Vite..."

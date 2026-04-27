@@ -21,7 +21,7 @@ class CrawlConfig(BaseModel):
 
 
 class ProcessingConfig(BaseModel):
-    min_text_length: int = 80
+    min_text_length: int = 60
     max_repeated_line_ratio: float = 0.35
     drop_patterns: list[str] = Field(default_factory=list)
     chunk_size: int = 500

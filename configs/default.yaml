@@ -13,11 +13,12 @@ crawl:
   include_pdf_links: false
 
 processing:
-  min_text_length: 80
+  min_text_length: 60
   max_repeated_line_ratio: 0.35
   drop_patterns:
     - "版权所有"
     - "Copyright"
+    - "All Rights Reserved"
     - "ICP备"
   chunk_size: 500
   chunk_overlap: 100

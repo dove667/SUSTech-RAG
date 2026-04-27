@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import subprocess
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -34,15 +33,15 @@ class LlamaCppBackend(LLMBackend):
     def __init__(self, config: AppConfig) -> None:
         """
         初始化 llama.cpp 后端。
-        根据配置和环境变量准备本地 llama.cpp 推理所需参数。
+        根据配置准备本地 llama.cpp 推理所需参数。
         输入参数：config，应用配置对象，包含 LLM 本地后端相关设置。
         输出参数：无，完成实例属性初始化。
         """
         local = config.llm.local
         self.binary = self._resolve_binary_path(
-            os.getenv("LLAMA_CPP_BINARY") or local.binary_path or default_llama_binary_name()
+            local.binary_path or default_llama_binary_name()
         )
-        self.model_path = os.getenv("LLAMA_CPP_MODEL_PATH") or local.model_path
+        self.model_path = local.model_path
         self.device_mode = local.device_mode
         self.device_name = local.device_name
         self.gpu_layers = local.gpu_layers
@@ -153,7 +152,7 @@ class DashScopeBackend(LLMBackend):
         """
         self.model = config.llm.dashscope.model
         self.temperature = config.llm.dashscope.temperature
-        dashscope.api_key = os.getenv("DASHSCOPE_API_KEY", "")
+        dashscope.api_key = config.llm.dashscope.api_key
 
     def generate(self, prompt: str) -> str:
         """

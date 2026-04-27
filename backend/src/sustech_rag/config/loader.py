@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import yaml
@@ -10,14 +9,14 @@ from sustech_rag.config.models import AppConfig
 
 def resolve_config_path(config_path: str | None = None) -> Path:
     """
-    解析配置文件路径，支持显式路径、环境变量和默认路径。
+    解析配置文件路径，支持显式路径和默认路径。
     输入参数：
     - config_path：外部传入的配置文件路径，可为空。
     输出参数：
     - Path：解析后的绝对配置文件路径。
     """
 
-    raw = config_path or os.getenv("SUSTECH_RAG_CONFIG") or "configs/default.yaml"
+    raw = config_path or "configs/default.yaml"
     return Path(raw).expanduser().resolve()
 
 

@@ -154,12 +154,14 @@ class DashScopeLLMConfig(BaseModel):
     输入参数：
     - model：DashScope 模型名称。
     - temperature：采样温度。
+    - api_key：DashScope API 密钥。
     输出参数：
     - DashScopeLLMConfig：返回 DashScope 配置模型实例。
     """
 
     model: str = "qwen-plus"
     temperature: float = 0.2
+    api_key: str = ""
 
 
 class LLMConfig(BaseModel):

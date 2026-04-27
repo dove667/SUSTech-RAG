@@ -2,35 +2,13 @@ from __future__ import annotations
 
 import os
 import subprocess
-from abc import ABC, abstractmethod
 from pathlib import Path
-
-import dashscope
 
 from sustech_rag.config.models import AppConfig
 from sustech_rag.utils.platform import default_llama_binary_name, is_windows
 
 
-class LLMBackend(ABC):
-    """
-    LLM 后端抽象基类。
-    定义所有大语言模型后端的统一接口。
-    输入参数：无。
-    输出参数：用于实现统一生成能力的后端抽象对象。
-    """
-
-    @abstractmethod
-    def generate(self, prompt: str) -> str:
-        """
-        生成文本结果。
-        接收提示词并返回模型生成内容的统一接口。
-        输入参数：prompt，用户输入的提示词文本。
-        输出参数：模型生成的文本结果。
-        """
-        raise NotImplementedError
-
-
-class LlamaCppBackend(LLMBackend):
+class LlamaCppBackend:
     def __init__(self, config: AppConfig) -> None:
         """
         初始化 llama.cpp 后端。
@@ -141,42 +119,3 @@ class LlamaCppBackend(LLMBackend):
         if mode in {"metal", "gpu"}:
             return self.device_name or None
         return self.device_name or mode
-
-
-class DashScopeBackend(LLMBackend):
-    def __init__(self, config: AppConfig) -> None:
-        """
-        初始化 DashScope 后端。
-        读取 DashScope 模型配置并设置 API 密钥。
-        输入参数：config，应用配置对象，包含 DashScope 相关设置。
-        输出参数：无，完成实例属性初始化。
-        """
-        self.model = config.llm.dashscope.model
-        self.temperature = config.llm.dashscope.temperature
-        dashscope.api_key = os.getenv("DASHSCOPE_API_KEY", "")
-
-    def generate(self, prompt: str) -> str:
-        """
-        调用 DashScope 生成文本。
-        通过 DashScope Generation API 发送提示词并返回生成结果。
-        输入参数：prompt，用户输入的提示词文本。
-        输出参数：DashScope 返回并清理后的文本结果。
-        """
-        response = dashscope.Generation.call(
-            model=self.model,
-            prompt=prompt,
-            temperature=self.temperature,
-        )
-        return response.output.text.strip()
-
-
-def build_llm_backend(config: AppConfig) -> LLMBackend:
-    """
-    构建 LLM 后端实例。
-    根据配置选择并创建 DashScope 或 llama.cpp 后端实现。
-    输入参数：config，应用配置对象，包含 LLM 后端类型与参数。
-    输出参数：已初始化的 LLMBackend 实例。
-    """
-    if config.llm.backend == "dashscope":
-        return DashScopeBackend(config)
-    return LlamaCppBackend(config)

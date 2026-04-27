@@ -148,34 +148,18 @@ class LocalLLMConfig(BaseModel):
     extra_args: list[str] = Field(default_factory=list)
 
 
-class DashScopeLLMConfig(BaseModel):
-    """
-    定义 DashScope 云端大模型调用参数。
-    输入参数：
-    - model：DashScope 模型名称。
-    - temperature：采样温度。
-    输出参数：
-    - DashScopeLLMConfig：返回 DashScope 配置模型实例。
-    """
-
-    model: str = "qwen-plus"
-    temperature: float = 0.2
-
-
 class LLMConfig(BaseModel):
     """
-    聚合本地与云端大模型后端配置。
+    聚合大模型后端配置。
     输入参数：
     - backend：当前启用的后端类型。
     - local：本地大模型配置。
-    - dashscope：DashScope 大模型配置。
     输出参数：
     - LLMConfig：返回大模型总配置模型实例。
     """
 
     backend: str = "llama_cpp"
     local: LocalLLMConfig
-    dashscope: DashScopeLLMConfig
 
 
 class AppConfig(BaseModel):

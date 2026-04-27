@@ -16,7 +16,6 @@ cp .env.example .env
 
 需要时填写：
 
-- `DASHSCOPE_API_KEY`
 - `LLAMA_CPP_BINARY`
 - `LLAMA_CPP_MODEL_PATH`
 

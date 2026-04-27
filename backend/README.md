@@ -8,7 +8,6 @@
 
 - End-to-end pipeline：从公开网页抓取到本地问答全链路打通
 - Local-first：优先使用本地 embedding、reranker、GGUF 模型
-- Dual LLM backends：支持 `llama.cpp` 本地推理和 `DashScope API`
 - Cross-platform：兼容 macOS / Windows 的路径与执行方式
 - Inspectable data flow：每一步都把中间结果落盘，便于调试与复现
 - Lightweight stack：`uv + LlamaIndex + ChromaDB`，适合个人开发和教学演示
@@ -20,7 +19,6 @@
 - Embedding：`BAAI/bge-small-zh-v1.5`
 - Reranker：`BAAI/bge-reranker-v2-m3`
 - 本地生成：`llama.cpp + Qwen3-8B GGUF`
-- 备选生成：阿里百炼 `DashScope API`
 - 依赖管理：`uv`
 - Python 版本：`3.11`
 
@@ -71,7 +69,7 @@ uv run sustech-rag query "南科大宿舍申请流程是什么？"
 - Embedding: `BAAI/bge-small-zh-v1.5`
 - Reranking: `BAAI/bge-reranker-v2-m3`
 - Local inference: `llama.cpp + Qwen3-8B GGUF`
-- Optional API inference: `DashScope`
+- Local inference: `llama.cpp + Qwen3-8B GGUF`
 
 ## 你最需要知道的目录
 
@@ -82,7 +80,7 @@ src/sustech_rag/crawlers/     网页抓取
 src/sustech_rag/processing/   清洗、分块、保留的 PDF 解析代码
 src/sustech_rag/indexing/     嵌入与向量索引
 src/sustech_rag/retrieval/    召回与重排序
-src/sustech_rag/llm/          llama.cpp / DashScope 后端
+src/sustech_rag/llm/          llama.cpp 后端
 data/models/                  本地模型目录
 data/raw/                     原始抓取结果
 data/interim/                 清洗与分块中间结果

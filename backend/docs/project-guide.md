@@ -101,7 +101,7 @@ uv run sustech-rag query "南科大本科招生有什么特色？"
 负责相似度召回和 `BGE-Reranker-v2-M3` 重排序。
 
 `src/sustech_rag/llm/`
-负责本地 `llama.cpp` 与 `DashScope` 的统一调用接口。
+负责本地 `llama.cpp` 的统一调用接口。
 
 `src/sustech_rag/utils/`
 负责 I/O、平台差异、模型缓存目录等基础工具。

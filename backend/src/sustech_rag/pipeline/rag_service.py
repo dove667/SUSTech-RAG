@@ -1,17 +1,13 @@
 from __future__ import annotations
 
 from sustech_rag.config.models import AppConfig
-from sustech_rag.llm.backends import build_llm_backend
+from sustech_rag.llm.backends import LlamaCppBackend
 from sustech_rag.retrieval.engine import RetrievalEngine
 
 
 class RagService:
     """
     封装检索与大模型生成的问答服务。
-    输入参数：
-        config: 应用配置对象。
-    输出参数：
-        无。
     """
 
     def __init__(self, config: AppConfig) -> None:
@@ -24,7 +20,7 @@ class RagService:
         """
         self.config = config
         self.retrieval = RetrievalEngine(config)
-        self.llm = build_llm_backend(config)
+        self.llm = LlamaCppBackend(config)
 
     def answer(self, query: str) -> str:
         """

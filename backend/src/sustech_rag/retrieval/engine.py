@@ -13,8 +13,6 @@ from sustech_rag.utils.runtime import prepare_model_cache
 class RetrievalEngine:
     """
     初始化向量检索与重排序引擎，并提供查询检索能力。
-    输入参数：无。
-    输出参数：RetrievalEngine 实例，用于执行召回与 rerank。
     """
 
     def __init__(self, config: AppConfig) -> None:

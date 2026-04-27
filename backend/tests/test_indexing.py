@@ -8,7 +8,6 @@ import pytest
 from sustech_rag.config.models import (
     AppConfig,
     CrawlConfig,
-    DashScopeLLMConfig,
     EmbeddingConfig,
     LLMConfig,
     LocalLLMConfig,
@@ -42,7 +41,6 @@ def _make_config(tmp_path: Path, batch_size: int = 4) -> AppConfig:
         ),
         llm=LLMConfig(
             local=LocalLLMConfig(),
-            dashscope=DashScopeLLMConfig(),
         ),
     )
 

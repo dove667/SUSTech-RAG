@@ -48,13 +48,10 @@ llm:
     gpu_layers: "0"
     threads: 0
     threads_batch: 0
-    single_turn: true
+    single_turn: false
     simple_io: true
     reasoning: "off"
     n_ctx: 8192
     temperature: 0.2
     max_tokens: 512
     extra_args: []
-  dashscope:
-    model: "qwen-plus"
-    temperature: 0.2

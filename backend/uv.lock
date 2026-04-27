@@ -437,19 +437,6 @@ nvtx = [
 ]
 
 [[package]]
-name = "dashscope"
-version = "1.20.13"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "aiohttp" },
-    { name = "requests" },
-    { name = "websocket-client" },
-]
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/ed/ea/6d0a41151dfe3a9e92c0d67182e923f2be25893ba6e92d2b3fdfb9dc4554/dashscope-1.20.13-py3-none-any.whl", hash = "sha256:68fb7e9ffa260ebba7188520ca3e462b651ead0d5ee470ccd510c84856be7465", size = 1264298, upload-time = "2024-11-18T07:16:09.472Z" },
-]
-
-[[package]]
 name = "dataclasses-json"
 version = "0.6.7"
 source = { registry = "https://pypi.org/simple" }
@@ -2320,7 +2307,6 @@ source = { editable = "." }
 dependencies = [
     { name = "beautifulsoup4" },
     { name = "chromadb" },
-    { name = "dashscope" },
     { name = "httpx" },
     { name = "llama-index" },
     { name = "llama-index-embeddings-huggingface" },
@@ -2349,7 +2335,6 @@ dev = [
 requires-dist = [
     { name = "beautifulsoup4", specifier = "==4.12.3" },
     { name = "chromadb", specifier = "==0.5.23" },
-    { name = "dashscope", specifier = "==1.20.13" },
     { name = "httpx", specifier = "==0.28.1" },
     { name = "llama-index", specifier = "==0.12.21" },
     { name = "llama-index-embeddings-huggingface", specifier = "==0.5.1" },

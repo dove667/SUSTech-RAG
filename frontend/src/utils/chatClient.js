@@ -76,7 +76,7 @@ export function chat({ settings, messages, conversationId, signal }, handlers) {
     try {
       for await (const evt of parseSSE(res.body)) {
         let payload = {};
-        try { payload = evt.data ? JSON.parse(evt.data) : {}; } catch { /* leave empty */ }
+        try { payload = evt.data ? JSON.parse(evt.data) : {}; } catch { console.warn('[ragwebui] malformed SSE data:', evt.data?.slice(0, 120)); }
         dispatch(evt.event, payload, handlers);
         if (evt.event === 'done' || evt.event === 'error') break;
       }

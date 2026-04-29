@@ -16,8 +16,14 @@ function uid(prefix) {
 }
 
 function loadConversations() {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) ?? []; }
-  catch { return []; }
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw) ?? [];
+  } catch {
+    console.warn('[ragwebui] localStorage data corrupted — resetting conversations');
+    return [];
+  }
 }
 
 function createConversation() {
@@ -44,7 +50,7 @@ export const useChat = defineStore('chat', {
   },
   actions: {
     persist() {
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(this.conversations)); } catch { /* quota */ }
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(this.conversations)); } catch { console.warn('[ragwebui] localStorage quota exceeded — conversations not persisted'); }
     },
     ensureActive() {
       if (this.active) return;

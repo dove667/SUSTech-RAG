@@ -12,6 +12,18 @@ from sustech_rag.config.loader import load_config
 from sustech_rag.pipeline.rag_service import RagService
 
 
+def _cors_origins() -> list[str]:
+    """CORS allowed origins — localhost defaults + optional env override."""
+    defaults = [
+        "http://127.0.0.1:3000",
+        "http://localhost:3000",
+    ]
+    extra = os.environ.get("SUSTECH_RAG_CORS_ORIGINS", "").strip()
+    if extra:
+        defaults.extend(origin.strip() for origin in extra.split(",") if origin.strip())
+    return defaults
+
+
 def _initial_config_path() -> str | None:
     raw = os.environ.get("SUSTECH_RAG_CONFIG", "").strip()
     return raw or None
@@ -59,12 +71,7 @@ def create_app(config_path: str | None = None) -> FastAPI:
     app.add_exception_handler(HTTPException, http_error_handler)
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[
-            "http://127.0.0.1:3000",
-            "http://localhost:3000",
-            "http://frp-off.com:35380",
-            "http://60.215.128.117:35380",
-        ],
+        allow_origins=_cors_origins(),
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

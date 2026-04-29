@@ -235,7 +235,16 @@ def knowledge_bases(
     cfg = getattr(request.app.state, "app_config", None)
     coll = cfg.vector_store.collection_name if cfg is not None else ""
     name = f"默认库（{coll}）" if coll else "默认库"
-    item = KnowledgeBaseItem(id="kb_default", name=name, doc_count=0)
+    # query actual doc count from Chroma
+    try:
+        from sustech_rag.utils.chroma_client import persistent_client
+
+        client = persistent_client(str(cfg.vector_store.persist_dir))
+        collection = client.get_collection(coll)
+        count = collection.count()
+    except Exception:
+        count = 0
+    item = KnowledgeBaseItem(id="kb_default", name=name, doc_count=count)
     return KnowledgeBasesResponse(items=[item])
 
 

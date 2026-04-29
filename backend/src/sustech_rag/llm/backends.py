@@ -104,14 +104,16 @@ class LlamaCppBackend(LLMBackend):
     def _wait_until_ready(self, timeout: float = 120) -> None:
         """Poll /health until the server responds OK."""
         deadline = time.time() + timeout
+        attempts = 0
+        last_error: str | None = None
         while time.time() < deadline:
             if self._proc is not None and self._proc.poll() is not None:
                 stderr = b""
                 if self._proc.stderr:
                     try:
                         stderr = self._proc.stderr.read()
-                    except Exception:
-                        pass
+                    except OSError as exc:
+                        stderr = f"(failed to read stderr: {exc})".encode()
                 raise RuntimeError(
                     "llama-server exited unexpectedly. stderr: "
                     + stderr.decode("utf-8", errors="replace").strip()
@@ -123,10 +125,15 @@ class LlamaCppBackend(LLMBackend):
                 if resp.status_code == 200:
                     print("[sustech-rag] llama-server is ready.", flush=True)
                     return
-            except httpx.RequestError:
-                pass
+            except httpx.RequestError as exc:
+                last_error = str(exc)
+            attempts += 1
             time.sleep(0.5)
-        raise RuntimeError(f"llama-server did not become ready within {timeout}s")
+        msg = f"llama-server did not become ready within {timeout}s (polled {attempts} times"
+        if last_error:
+            msg += f", last error: {last_error}"
+        msg += ")"
+        raise RuntimeError(msg)
 
     def shutdown(self) -> None:
         proc = self._proc
@@ -215,6 +222,12 @@ class LlamaCppBackend(LLMBackend):
                             if text:
                                 yield ("content", text)
                     except json.JSONDecodeError:
+                        # malformed SSE data line — log a short snippet for diagnostics
+                        printable = data_str[:120]
+                        print(
+                            f"[sustech-rag] skipped malformed SSE JSON: {printable}",
+                            flush=True,
+                        )
                         continue
         except httpx.HTTPError as exc:
             raise RuntimeError(f"llama-server stream request failed: {exc}") from exc
@@ -265,5 +278,6 @@ class LlamaCppBackend(LLMBackend):
         )
 
 
-def build_llm_backend(config: AppConfig) -> LLMBackend:
+def build_llm_backend(config: AppConfig) -> LlamaCppBackend:
+    """Build the LLM backend (currently only llama.cpp is supported)."""
     return LlamaCppBackend(config)

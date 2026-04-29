@@ -5,7 +5,6 @@ from __future__ import annotations
 import io
 import json
 import os
-import platform
 import shutil
 import subprocess
 import sys
@@ -13,8 +12,10 @@ import zipfile
 from pathlib import Path
 from urllib.request import Request, urlopen
 
+from sustech_rag.utils.platform import default_llama_binary_name, is_windows
 
-def _download_llama_cpp_binary(target_name: str, dest_dir: Path) -> str:
+
+def _download_llama_cpp_binary(dest_dir: Path) -> str:
     """Download the latest llama.cpp pre-built binary from GitHub releases and extract it."""
     api_url = "https://api.github.com/repos/ggerganov/llama.cpp/releases/latest"
     print("[sustech-rag] fetching latest llama.cpp release info...", flush=True)
@@ -26,13 +27,11 @@ def _download_llama_cpp_binary(target_name: str, dest_dir: Path) -> str:
     plat = sys.platform
     if plat == "win32":
         asset_hint = "win"
-        bin_name = "llama-server.exe"
     elif plat == "darwin":
         asset_hint = "mac"
-        bin_name = "llama-server"
     else:
         asset_hint = "ubuntu"
-        bin_name = "llama-server"
+    bin_name = default_llama_binary_name()
 
     def _arch_matches(name: str) -> bool:
         n = name.lower()
@@ -112,7 +111,9 @@ def _download_llama_cpp_binary(target_name: str, dest_dir: Path) -> str:
             check=True, capture_output=True, timeout=30,
         )
     except (subprocess.CalledProcessError, OSError) as exc:
-        _cleanup_dest(dest_dir, bin_name)
+        target = dest_dir / bin_name
+        if target.is_file():
+            target.unlink(missing_ok=True)
         raise RuntimeError(
             f"llama-server binary failed to start (exit code {getattr(exc, 'returncode', '?')}).\n"
             "This usually means a system runtime is missing.\n"
@@ -121,12 +122,6 @@ def _download_llama_cpp_binary(target_name: str, dest_dir: Path) -> str:
 
     print(f"[sustech-rag] llama.cpp installed to {dest_dir}", flush=True)
     return found_binary
-
-
-def _cleanup_dest(dest_dir: Path, base_name: str) -> None:
-    target = dest_dir / base_name
-    if target.is_file():
-        target.unlink(missing_ok=True)
 
 
 def ensure_llama_cpp_binary(binary_path: str) -> str:
@@ -152,7 +147,7 @@ def ensure_llama_cpp_binary(binary_path: str) -> str:
         return resolved
 
     print("[sustech-rag] llama.cpp binary not found, starting auto-install ...", flush=True)
-    return _download_llama_cpp_binary(binary_path, dest)
+    return _download_llama_cpp_binary(dest)
 
 
 def ensure_gguf_model(model_path: str, hf_repo_id: str, hf_filename: str) -> str:
@@ -178,5 +173,5 @@ def ensure_gguf_model(model_path: str, hf_repo_id: str, hf_filename: str) -> str
 
 
 def _make_executable(path: Path) -> None:
-    if platform.system().lower() != "windows":
+    if not is_windows():
         path.chmod(path.stat().st_mode | 0o111)

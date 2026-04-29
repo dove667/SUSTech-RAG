@@ -72,7 +72,17 @@ class SiteCrawler:
                 try:
                     response = client.get(url)
                     response.raise_for_status()
-                except Exception:
+                except httpx.HTTPStatusError as exc:
+                    print(
+                        f"[sustech-rag] HTTP {exc.response.status_code} for {url}, skipping.",
+                        flush=True,
+                    )
+                    continue
+                except httpx.RequestError as exc:
+                    print(
+                        f"[sustech-rag] request failed for {url}: {exc}, skipping.",
+                        flush=True,
+                    )
                     continue
 
                 final_url = self._normalize_url(str(response.url))
@@ -225,4 +235,12 @@ class SiteCrawler:
             "script, style, noscript, header, footer, nav, aside, form, iframe, svg"
         ):
             node.decompose()
-        return pruned.find("main") or pruned.find("article") or pruned.body or pruned
+        main = pruned.find("main") or pruned.find("article") or pruned.body
+        if main is None:
+            print(
+                "[sustech-rag] no valid main content node found (no main/article/body), "
+                "returning empty pruned document.",
+                flush=True,
+            )
+            return pruned
+        return main

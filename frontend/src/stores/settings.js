@@ -28,9 +28,7 @@ function loadFromStorage() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return {};
-    const o = JSON.parse(raw);
-    delete o.demoMode;
-    return o;
+    return JSON.parse(raw);
   } catch {
     return {};
   }
@@ -60,9 +58,7 @@ export const useSettings = defineStore('settings', {
       applyTheme(this.themeVars);
     },
     persist() {
-      const toSave = { ...this.$state };
-      delete toSave.demoMode;
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.$state));
     },
     setPreset(id) {
       this.preset = id;

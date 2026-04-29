@@ -7,8 +7,8 @@ from sustech_rag.llm.backends import build_llm_backend
 from sustech_rag.retrieval.engine import RetrievalEngine
 from sustech_rag.retrieval.reranker import RetrievedChunk
 
-_SYSTEM_PROMPT = (
-    "你是南方科技大学校园知识库问答助手。请基于提供的检索上下文回答问题，"
+_DEFAULT_SYSTEM_PROMPT = (
+    "你是校园知识库问答助手。请基于提供的检索上下文回答问题，"
     "如果上下文不足，请明确说明。请给出简洁、准确的中文回答，并尽量引用信息来源标题。"
 )
 
@@ -29,7 +29,7 @@ class RagService:
             f"[{idx + 1}] {chunk.metadata.get('title', 'Untitled')}\n{chunk.text}"
             for idx, chunk in enumerate(chunks)
         )
-        system_content = _SYSTEM_PROMPT
+        system_content = _DEFAULT_SYSTEM_PROMPT
         if chunks:
             system_content += f"\n\n检索上下文：\n{context}"
 
@@ -48,7 +48,7 @@ class RagService:
         for m in reversed(messages):
             if m.get("role") == "user" and (m.get("content") or "").strip():
                 return m["content"].strip()
-        return ""
+        raise ValueError("no user message found in conversation")
 
     def answer(self, query: str) -> str:
         chunks = self.retrieval.retrieve(query)
@@ -72,7 +72,7 @@ class RagService:
         - ("content.delta", str)
         """
         query = self._extract_last_user_query(messages)
-        chunks = self.retrieval.retrieve(query) if query else []
+        chunks = self.retrieval.retrieve(query)
 
         if chunks:
             yield ("reference", chunks)

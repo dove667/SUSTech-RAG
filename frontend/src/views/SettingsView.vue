@@ -19,15 +19,16 @@ const presetGroups = [
 
 const activeTab = ref('general');
 
+const embedOrigin = typeof window !== 'undefined' ? window.location.origin : '';
 const embedSnippet = `<!-- 1) 整页嵌入 -->
 <iframe
-  src="https://your-host/embed"
+  src="${embedOrigin}/embed"
   style="width:100%;height:600px;border:0">
 </iframe>
 
 <!-- 2) 精灵球（悬浮） -->
 <iframe
-  src="https://your-host/ball"
+  src="${embedOrigin}/ball"
   style="position:fixed;inset:0;border:0;pointer-events:none;z-index:99999;background:transparent"
   allowtransparency="true">
 </iframe>

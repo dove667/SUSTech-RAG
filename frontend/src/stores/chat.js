@@ -47,12 +47,17 @@ export const useChat = defineStore('chat', {
       try { localStorage.setItem(STORAGE_KEY, JSON.stringify(this.conversations)); } catch { /* quota */ }
     },
     ensureActive() {
-      if (!this.active) {
-        const c = createConversation();
-        this.conversations.unshift(c);
-        this.activeId = c.id;
-        this.persist();
+      if (this.active) return;
+      // 若已有空会话则复用，避免每次刷新都创建新会话
+      const empty = this.conversations.find(c => c.messages.length === 0);
+      if (empty) {
+        this.activeId = empty.id;
+        return;
       }
+      const c = createConversation();
+      this.conversations.unshift(c);
+      this.activeId = c.id;
+      this.persist();
     },
     newConversation() {
       const c = createConversation();
@@ -103,6 +108,10 @@ export const useChat = defineStore('chat', {
         loading: true,
       };
       conv.messages.push(aiMsg);
+      // MUST use the reactive proxy from the store; raw `aiMsg` mutations won't
+      // trigger Vue re-renders (Pinia wraps every pushed object in a Proxy).
+      const msg = conv.messages[conv.messages.length - 1];
+
       if (conv.messages.length === 2) {
         conv.title = text.slice(0, 24) || '新会话';
       }
@@ -113,7 +122,7 @@ export const useChat = defineStore('chat', {
 
       // Plain-text messages for the API
       const apiMessages = conv.messages
-        .filter(m => m !== aiMsg)
+        .filter(m => m.id !== msg.id)
         .map(m => ({
           role: m.role,
           content: m.blocks.map(b => b.type === 'text' ? b.content : '').join('').trim(),
@@ -123,11 +132,13 @@ export const useChat = defineStore('chat', {
       const settings = useSettings();
 
       const getOrCreateBlock = (type, matcher = () => true) => {
-        const found = aiMsg.blocks.find(b => b.type === type && matcher(b));
+        const found = msg.blocks.find(b => b.type === type && matcher(b));
         if (found) return found;
         const b = { type };
-        aiMsg.blocks.push(b);
-        return b;
+        msg.blocks.push(b);
+        // MUST return the reactive proxy from the store, not the raw object.
+        // Mutations on the raw object bypass Vue's Proxy traps → no re-render.
+        return msg.blocks[msg.blocks.length - 1];
       };
 
       let currentText = null;
@@ -135,12 +146,13 @@ export const useChat = defineStore('chat', {
 
       const handlers = {
         onStart: () => {
-          aiMsg.loading = true;
+          msg.loading = true;
         },
         onThinkDelta: (t) => {
           if (!currentThink || currentThink.closed) {
-            currentThink = { type: 'think', content: '', closed: false };
-            aiMsg.blocks.push(currentThink);
+            msg.blocks.push({ type: 'think', content: '', closed: false });
+            // Re-acquire through the reactive array (see getOrCreateBlock).
+            currentThink = msg.blocks[msg.blocks.length - 1];
           }
           currentThink.content += t;
         },
@@ -150,39 +162,40 @@ export const useChat = defineStore('chat', {
         },
         onContentDelta: (t) => {
           if (!currentText) {
-            currentText = { type: 'text', content: '' };
-            aiMsg.blocks.push(currentText);
+            msg.blocks.push({ type: 'text', content: '' });
+            // Re-acquire through the reactive array (see getOrCreateBlock).
+            currentText = msg.blocks[msg.blocks.length - 1];
           }
           currentText.content += t;
         },
         onToolCall: (data) => {
-          aiMsg.blocks.push({ type: 'tool', id: data.id, name: data.name, args: data.arguments, result: null });
-          currentText = null; // break text stream — tool shows between text chunks
+          msg.blocks.push({ type: 'tool', id: data.id, name: data.name, args: data.arguments, result: null });
+          currentText = null;
         },
         onToolResult: (data) => {
-          const t = [...aiMsg.blocks].reverse().find(b => b.type === 'tool' && b.id === data.id);
+          const t = [...msg.blocks].reverse().find(b => b.type === 'tool' && b.id === data.id);
           if (t) t.result = data.result;
         },
         onImage: (data) => {
-          aiMsg.blocks.push({ type: 'image', url: data.url, alt: data.alt, caption: data.caption });
+          msg.blocks.push({ type: 'image', url: data.url, alt: data.alt, caption: data.caption });
           currentText = null;
         },
         onReference: (data) => {
           const ref = getOrCreateBlock('reference');
           ref.items = [...(ref.items || []), ...(data.items || [])];
         },
-        onFallback: () => {
-          aiMsg.blocks.push({ type: 'error', level: 'info', message: '未连接后端，已切换到本地 Demo 模式。' });
-        },
         onError: (data) => {
-          aiMsg.blocks.push({ type: 'error', level: 'error', message: data?.message || '发生错误' });
+          const code = data?.code || 'error';
+          const msgText = data?.message || '发生未知错误';
+          const detail = data?.detail ? ` (${data.detail})` : '';
+          msg.blocks.push({ type: 'error', level: 'error', message: `[${code}] ${msgText}${detail}` });
         },
         onDone: (data) => {
-          aiMsg.usage = data?.usage;
-          aiMsg.finishReason = data?.finish_reason;
+          msg.usage = data?.usage;
+          msg.finishReason = data?.finish_reason;
         },
         onFinish: () => {
-          aiMsg.loading = false;
+          msg.loading = false;
           this.streaming = false;
           this.cancelFn = null;
           conv.updatedAt = Date.now();
@@ -203,9 +216,22 @@ export const useChat = defineStore('chat', {
       }
       this.streaming = false;
       const last = this.active?.messages?.[this.active.messages.length - 1];
+      const messageId = last?.id;
       if (last?.loading) {
         last.loading = false;
         last.blocks.push({ type: 'error', level: 'info', message: '用户已中止生成。' });
+      }
+      // 通知后端中断生成
+      if (messageId) {
+        const settings = useSettings();
+        fetch(`${settings.apiBaseUrl}/chat/cancel`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(settings.identityId ? { 'X-Identity-ID': settings.identityId } : {}),
+          },
+          body: JSON.stringify({ conversation_id: this.activeId, message_id: messageId }),
+        }).catch(() => {});
       }
       this.persist();
     },

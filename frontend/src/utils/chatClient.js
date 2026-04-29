@@ -1,5 +1,4 @@
 import { parseSSE } from './sse.js';
-import { runDemoStream } from './demoStream.js';
 
 /**
  * Streaming chat client.  Consumers call `chat({...}, handlers)` where
@@ -14,11 +13,6 @@ export function chat({ settings, messages, conversationId, signal }, handlers) {
   if (signal) signal.addEventListener('abort', () => ctrl.abort());
 
   const run = async () => {
-    if (settings.demoMode) {
-      await runDemoStream(messages, handlers, innerSignal);
-      return;
-    }
-
     const url = joinUrl(settings.apiBaseUrl, '/chat/completions');
     const body = {
       conversation_id: conversationId,
@@ -42,23 +36,40 @@ export function chat({ settings, messages, conversationId, signal }, handlers) {
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'text/event-stream',
-          ...(settings.apiKey ? { 'Authorization': `Bearer ${settings.apiKey}` } : {}),
+          ...(settings.identityId ? { 'X-Identity-ID': settings.identityId } : {}),
         },
         body: JSON.stringify(body),
       });
     } catch (err) {
-      // Network error → fall back to demo.
-      handlers.onFallback?.(err);
-      await runDemoStream(messages, handlers, innerSignal);
+      if (innerSignal.aborted) return;
+      handlers.onError?.({
+        code: 'network_error',
+        message: err instanceof Error ? err.message : String(err),
+      });
       return;
     }
 
     const contentType = res.headers.get('content-type') || '';
     if (!res.ok || !res.body || !contentType.includes('event-stream')) {
-      let errPayload = { code: `http_${res.status}`, message: res.statusText || 'backend did not return event-stream' };
-      try { errPayload = await res.clone().json(); } catch { /* ignore */ }
-      handlers.onFallback?.(errPayload);
-      await runDemoStream(messages, handlers, innerSignal);
+      // 尝试从响应体中提取有用信息
+      let errPayload = {
+        code: `http_${res.status}`,
+        message: res.statusText || 'backend did not return event-stream',
+        detail: `content-type: ${contentType || 'none'}`,
+      };
+      try {
+        const clone = res.clone();
+        const text = await clone.text();
+        try {
+          const json = JSON.parse(text);
+          errPayload = { ...errPayload, ...json };
+        } catch {
+          errPayload.detail += ` | body: ${text.slice(0, 300)}`;
+        }
+      } catch {
+        /* body not readable */
+      }
+      handlers.onError?.(errPayload);
       return;
     }
 

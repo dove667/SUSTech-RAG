@@ -1,15 +1,44 @@
 <script setup>
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { RouterLink } from 'vue-router';
 import { useChat } from '@/stores/chat.js';
 import { useSettings } from '@/stores/settings.js';
+import { showConfirm } from '@/utils/confirm.js';
 import ChatWindow from '@/components/ChatWindow.vue';
 import ChatInput from '@/components/ChatInput.vue';
 
 const chat = useChat();
 const settings = useSettings();
 
-onMounted(() => { chat.ensureActive(); });
+const backendStatus = ref('checking'); // 'checking' | 'ready' | 'error'
+const backendMessage = ref('');
+
+async function checkHealth() {
+  backendStatus.value = 'checking';
+  try {
+    const base = settings.apiBaseUrl || '/api';
+    const res = await fetch(`${base.replace(/\/$/, '')}/health`);
+    if (res.ok) {
+      backendStatus.value = 'ready';
+    } else {
+      backendStatus.value = 'error';
+      try {
+        const data = await res.json();
+        backendMessage.value = data.message || res.statusText;
+      } catch {
+        backendMessage.value = res.statusText;
+      }
+    }
+  } catch {
+    backendStatus.value = 'error';
+    backendMessage.value = '无法连接到后端服务';
+  }
+}
+
+onMounted(() => {
+  chat.ensureActive();
+  checkHealth();
+});
 
 const list = computed(() => chat.conversations);
 const active = computed(() => chat.active);
@@ -19,8 +48,15 @@ function send(text) { chat.send(text); }
 function stop() { chat.cancel(); }
 function newChat() { chat.newConversation(); }
 function select(id) { chat.selectConversation(id); }
-function del(id) {
-  if (confirm('删除这个会话？')) chat.deleteConversation(id);
+async function del(id) {
+  const { confirmed } = await showConfirm({
+    title: '删除会话',
+    message: '确定要删除这个会话吗？此操作不可恢复。',
+    confirmText: '删除',
+    danger: true,
+    storageKey: 'skip_delete_conversation',
+  });
+  if (confirmed) chat.deleteConversation(id);
 }
 function titleOf(c) {
   return c.title || '新会话';
@@ -65,6 +101,10 @@ function timeOf(c) {
           <RouterLink to="/ball">精灵球</RouterLink>
           <RouterLink to="/embed">嵌入版</RouterLink>
         </div>
+        <div class="status" :class="backendStatus" :title="backendMessage">
+          <span class="dot" />
+          <span class="label">{{ backendStatus === 'ready' ? '后端已连接' : backendStatus === 'error' ? '后端异常' : '检测中...' }}</span>
+        </div>
       </div>
     </aside>
 
@@ -72,7 +112,6 @@ function timeOf(c) {
       <header class="topbar">
         <div class="title">{{ active?.title || 'RAG 知识问答' }}</div>
         <div class="spacer" />
-        <span v-if="settings.demoMode" class="tag">Demo 模式</span>
         <button class="icon-btn" @click="chat.regenerate" title="重新生成" :disabled="chat.streaming">↻</button>
       </header>
 
@@ -178,6 +217,22 @@ function timeOf(c) {
 }
 .links a { color: var(--text-muted); }
 
+.status {
+  display: flex; align-items: center; gap: 6px;
+  justify-content: center; padding-top: 4px;
+  font-size: 11px;
+}
+.status .dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.status.checking .dot { background: var(--text-muted); }
+.status.ready .dot { background: #22c55e; }
+.status.error .dot { background: var(--danger); color: var(--danger); }
+.status .label { color: var(--text-muted); }
+.status.error .label { color: var(--danger); }
+
 .main {
   display: flex;
   flex-direction: column;
@@ -194,11 +249,6 @@ function timeOf(c) {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .spacer { flex: 1; }
-.tag {
-  font-size: 11px; padding: 2px 8px;
-  background: var(--primary-soft); color: var(--primary);
-  border-radius: 20px;
-}
 
 .composer {
   padding: 12px 20px 16px;

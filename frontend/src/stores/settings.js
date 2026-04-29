@@ -9,7 +9,7 @@ const DEFAULTS = () => ({
   overrides: {},                   // partial override of CSS vars — wins over preset
 
   apiBaseUrl: '/api',
-  apiKey: '',
+  identityId: '',
   model: 'default',
   knowledgeBaseIds: [],
   temperature: 0.3,
@@ -21,7 +21,6 @@ const DEFAULTS = () => ({
   sendWithEnter: true,
   showReferences: true,
   autoCollapseThink: true,
-  demoMode: false,                 // force local demo mode without a backend
   renderLatex: true,
 });
 
@@ -29,7 +28,9 @@ function loadFromStorage() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return {};
-    return JSON.parse(raw);
+    const o = JSON.parse(raw);
+    delete o.demoMode;
+    return o;
   } catch {
     return {};
   }
@@ -60,6 +61,7 @@ export const useSettings = defineStore('settings', {
     },
     persist() {
       const toSave = { ...this.$state };
+      delete toSave.demoMode;
       localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
     },
     setPreset(id) {

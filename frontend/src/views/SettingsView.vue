@@ -3,6 +3,7 @@ import { computed, ref } from 'vue';
 import { RouterLink } from 'vue-router';
 import { useSettings } from '@/stores/settings.js';
 import { PRESETS, getPresetVars } from '@/styles/themes.js';
+import { showConfirm } from '@/utils/confirm.js';
 
 const s = useSettings();
 
@@ -40,13 +41,28 @@ function update(patch) { s.update(patch); }
 
 function onPreset(id) { s.setPreset(id); }
 
-function resetAll() {
-  if (confirm('恢复全部默认设置？（不会清空会话）')) s.reset();
+async function resetAll() {
+  const { confirmed } = await showConfirm({
+    title: '恢复默认设置',
+    message: '恢复全部默认设置？此操作不会清空会话。',
+    confirmText: '恢复',
+    danger: true,
+    storageKey: 'skip_reset_settings',
+  });
+  if (confirmed) s.reset();
 }
 
-function clearChats() {
-  if (confirm('清空所有会话？此操作不可恢复。')) {
-    import('@/stores/chat.js').then(({ useChat }) => useChat().clearAll());
+async function clearChats() {
+  const { confirmed } = await showConfirm({
+    title: '清空所有会话',
+    message: '确定要清空所有会话吗？此操作不可恢复。',
+    confirmText: '清空',
+    danger: true,
+    storageKey: 'skip_clear_chats',
+  });
+  if (confirmed) {
+    const { useChat } = await import('@/stores/chat.js');
+    useChat().clearAll();
   }
 }
 
@@ -132,10 +148,6 @@ async function importConfig(e) {
       <section v-if="activeTab === 'general'" class="panel">
         <h2>基本设置</h2>
         <div class="row">
-          <label>Demo 模式（无后端时开启）</label>
-          <input type="checkbox" :checked="s.demoMode" @change="e => update({ demoMode: e.target.checked })" />
-        </div>
-        <div class="row">
           <label>Enter 直接发送（关闭则 Ctrl+Enter 发送）</label>
           <input type="checkbox" :checked="s.sendWithEnter" @change="e => update({ sendWithEnter: e.target.checked })" />
         </div>
@@ -220,10 +232,6 @@ async function importConfig(e) {
         <div class="row">
           <label>API Base URL</label>
           <input type="text" :value="s.apiBaseUrl" @change="e => update({ apiBaseUrl: e.target.value })" placeholder="/api" />
-        </div>
-        <div class="row">
-          <label>API Key（可选，Bearer）</label>
-          <input type="password" :value="s.apiKey" @change="e => update({ apiKey: e.target.value })" placeholder="sk-..." />
         </div>
         <div class="row">
           <label>Model</label>

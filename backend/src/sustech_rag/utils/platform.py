@@ -19,7 +19,7 @@ def default_llama_binary_name() -> str:
     输入参数：无。
     输出参数：Windows 返回 "llama-cli.exe"，其他平台返回 "llama-cli"。
     """
-    return "llama-cli.exe" if is_windows() else "llama-cli"
+    return "llama-server.exe" if is_windows() else "llama-server"
 
 
 def normalize_path(raw: str | Path) -> Path:

@@ -8,19 +8,17 @@
 
 - End-to-end pipeline：从公开网页抓取到本地问答全链路打通
 - Local-first：优先使用本地 embedding、reranker、GGUF 模型
-- Dual LLM backends：支持 `llama.cpp` 本地推理和 `DashScope API`
 - Cross-platform：兼容 macOS / Windows 的路径与执行方式
 - Inspectable data flow：每一步都把中间结果落盘，便于调试与复现
 - Lightweight stack：`uv + LlamaIndex + ChromaDB`，适合个人开发和教学演示
 
 ## 30 秒了解项目
 
-- 数据源：SUSTech 官网、招生页、院系页、校园生活等公开页面
+- 数据源：默认配置为本地开发种子页（`http://127.0.0.1:3000/`，需先起前端再 `crawl`）；可按需改回官网域名
 - 向量检索：`LlamaIndex + ChromaDB`
 - Embedding：`BAAI/bge-small-zh-v1.5`
 - Reranker：`BAAI/bge-reranker-v2-m3`
 - 本地生成：`llama.cpp + Qwen3-8B GGUF`
-- 备选生成：阿里百炼 `DashScope API`
 - 依赖管理：`uv`
 - Python 版本：`3.11`
 
@@ -28,7 +26,7 @@
 
 当前仓库已经具备可运行的第一版框架：
 
-- 已完成：项目结构、CLI、抓取、清洗、分块、索引、检索、重排序、本地 / API 双生成后端
+- 已完成：项目结构、CLI、抓取、清洗、分块、索引、检索、重排序、本地生成后端
 - 已完成：本地模型优先加载、跨平台路径处理、基础测试与文档
 - 进行中：真实数据抓取验证、清洗规则增强、rerank / 召回质量调优
 - 计划中：更强的网页解析、增量更新、评测集与离线评估
@@ -48,7 +46,7 @@ SUSTech Public Pages
           ->
  Retrieve + Rerank
           ->
-   Local Qwen / API
+   Local Qwen
 ```
 
 ## 快速开始
@@ -61,6 +59,20 @@ uv run sustech-rag index
 uv run sustech-rag query "南科大宿舍申请流程是什么？"
 ```
 
+### 与前端 WebUI 联调（HTTP + SSE）
+
+仓库内 [`frontend`](../frontend) 默认把 `/api` 代理到本机 `8000`。在后端目录执行：
+
+```bash
+uv run sustech-rag serve --host 127.0.0.1 --port 8000
+```
+
+前端开发服务器（默认 `http://127.0.0.1:3000`）启动后，设置里接口地址保持 `/api` 即可调用 `POST /api/chat/completions` 等路由。
+
+可选：设置环境变量 `SUSTECH_RAG_API_KEY` 后，请求需带 `Authorization: Bearer <key>`。
+
+若直接用 `uvicorn sustech_rag.api.app:app` 启动，可通过环境变量 `SUSTECH_RAG_CONFIG` 指定 YAML 配置文件绝对路径。
+
 ## Tech Stack
 
 - Runtime: `Python 3.11`
@@ -71,18 +83,18 @@ uv run sustech-rag query "南科大宿舍申请流程是什么？"
 - Embedding: `BAAI/bge-small-zh-v1.5`
 - Reranking: `BAAI/bge-reranker-v2-m3`
 - Local inference: `llama.cpp + Qwen3-8B GGUF`
-- Optional API inference: `DashScope`
 
 ## 你最需要知道的目录
 
 ```text
 configs/default.yaml          主配置
 src/sustech_rag/cli/          CLI 入口
+src/sustech_rag/api/          与 Web 前端对接的 FastAPI（`serve`）
 src/sustech_rag/crawlers/     网页抓取
 src/sustech_rag/processing/   清洗、分块、保留的 PDF 解析代码
 src/sustech_rag/indexing/     嵌入与向量索引
 src/sustech_rag/retrieval/    召回与重排序
-src/sustech_rag/llm/          llama.cpp / DashScope 后端
+src/sustech_rag/llm/          llama.cpp 后端
 data/models/                  本地模型目录
 data/raw/                     原始抓取结果
 data/interim/                 清洗与分块中间结果

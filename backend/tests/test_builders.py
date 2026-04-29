@@ -3,7 +3,6 @@ from pathlib import Path
 from sustech_rag.config.models import (
     AppConfig,
     CrawlConfig,
-    DashScopeLLMConfig,
     EmbeddingConfig,
     LLMConfig,
     LocalLLMConfig,
@@ -38,9 +37,7 @@ def _make_config(tmp_path: Path) -> AppConfig:
             collection_name="test-collection",
         ),
         llm=LLMConfig(
-            backend="llama_cpp",
             local=LocalLLMConfig(),
-            dashscope=DashScopeLLMConfig(),
         ),
     )
 

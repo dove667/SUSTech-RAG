@@ -114,19 +114,18 @@ class LocalLLMConfig(BaseModel):
     """
     定义本地 llama.cpp 后端运行参数。
     输入参数：
-    - binary_path：llama-cli 可执行文件路径，默认为空。
+    - binary_path：llama-server 可执行文件路径，默认为空。
     - model_path：GGUF 模型路径，默认为空。
     - device_mode：设备模式，默认 cpu。
     - device_name：自定义设备名称，默认为空。
     - gpu_layers：GPU 层数参数，默认 0。
     - threads：推理线程数。
     - threads_batch：批处理线程数。
-    - single_turn：是否单轮输出。
-    - simple_io：是否使用简化 I/O。
     - reasoning：推理模式开关。
     - n_ctx：上下文长度。
     - temperature：采样温度。
     - max_tokens：最大输出 token 数。
+    - server_port：llama-server HTTP 端口，默认 8081。
     - extra_args：额外命令行参数列表。
     输出参数：
     - LocalLLMConfig：返回本地大模型配置模型实例。
@@ -134,50 +133,32 @@ class LocalLLMConfig(BaseModel):
 
     binary_path: str = ""
     model_path: str = ""
+    hf_repo_id: str = ""
+    hf_filename: str = ""
     device_mode: str = "cpu"
     device_name: str = ""
     gpu_layers: str = "0"
     threads: int = 0
     threads_batch: int = 0
-    single_turn: bool = True
-    simple_io: bool = True
     reasoning: str = "off"
     n_ctx: int = 8192
     temperature: float = 0.2
     max_tokens: int = 512
+    stop: list[str] = Field(default_factory=list)
+    server_port: int = 8081
     extra_args: list[str] = Field(default_factory=list)
-
-
-class DashScopeLLMConfig(BaseModel):
-    """
-    定义 DashScope 云端大模型调用参数。
-    输入参数：
-    - model：DashScope 模型名称。
-    - temperature：采样温度。
-    - api_key：DashScope API 密钥。
-    输出参数：
-    - DashScopeLLMConfig：返回 DashScope 配置模型实例。
-    """
-
-    model: str = "qwen-plus"
-    temperature: float = 0.2
-    api_key: str = ""
 
 
 class LLMConfig(BaseModel):
     """
-    聚合本地与云端大模型后端配置。
+    本地大模型配置。
     输入参数：
-    - backend：当前启用的后端类型。
     - local：本地大模型配置。
-    - dashscope：DashScope 大模型配置。
     输出参数：
     - LLMConfig：返回大模型总配置模型实例。
     """
 
-    backend: str = "llama_cpp"
     local: LocalLLMConfig
-    dashscope: DashScopeLLMConfig
 
 
 class AppConfig(BaseModel):

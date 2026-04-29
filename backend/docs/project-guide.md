@@ -8,7 +8,7 @@
 - 清洗、过滤并切分成适合检索的文本块
 - 用中文 embedding 建立本地向量库
 - 用 reranker 做精筛
-- 用本地 `llama.cpp` 或百炼 API 生成答案
+- 用本地 `llama.cpp` 生成答案
 
 ## 一图看懂
 
@@ -101,7 +101,7 @@ uv run sustech-rag query "南科大本科招生有什么特色？"
 负责相似度召回和 `BGE-Reranker-v2-M3` 重排序。
 
 `src/sustech_rag/llm/`
-负责本地 `llama.cpp` 与 `DashScope` 的统一调用接口。
+负责本地 `llama.cpp` 的统一调用接口。
 
 `src/sustech_rag/utils/`
 负责 I/O、平台差异、模型缓存目录等基础工具。
@@ -135,7 +135,6 @@ Hugging Face 缓存目录。
 - `processing.chunk_overlap`
 - `embedding.local_path`
 - `retrieval.reranker_local_path`
-- `llm.backend`
 - `llm.local.binary_path`
 - `llm.local.model_path`
 

@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { RouterLink } from 'vue-router';
 import { useChat } from '@/stores/chat.js';
+import { showConfirm } from '@/utils/confirm.js';
 import ChatWindow from '@/components/ChatWindow.vue';
 import ChatInput from '@/components/ChatInput.vue';
 
@@ -14,7 +15,16 @@ const drawer = ref(false);
 function pick(t) { chat.send(t); drawer.value = false; }
 function newChat() { chat.newConversation(); drawer.value = false; }
 function select(id) { chat.selectConversation(id); drawer.value = false; }
-function del(id) { if (confirm('删除？')) chat.deleteConversation(id); }
+async function del(id) {
+  const { confirmed } = await showConfirm({
+    title: '删除会话',
+    message: '确定要删除这个会话吗？',
+    confirmText: '删除',
+    danger: true,
+    storageKey: 'skip_delete_conversation',
+  });
+  if (confirmed) chat.deleteConversation(id);
+}
 </script>
 
 <template>

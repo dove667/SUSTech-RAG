@@ -12,10 +12,7 @@ from sustech_rag.config.models import CrawlConfig
 from sustech_rag.pipeline.schemas import RawDocument
 from sustech_rag.utils.io import ensure_dir
 
-try:
-    from readability import Document
-except ImportError:  # pragma: no cover - environment-dependent fallback
-    Document = None
+from readability import Document
 
 TRACKING_QUERY_PREFIXES = ("utm_",)
 TRACKING_QUERY_KEYS = {"spm", "from", "source", "_t", "_refluxos"}
@@ -75,7 +72,17 @@ class SiteCrawler:
                 try:
                     response = client.get(url)
                     response.raise_for_status()
-                except Exception:
+                except httpx.HTTPStatusError as exc:
+                    print(
+                        f"[sustech-rag] HTTP {exc.response.status_code} for {url}, skipping.",
+                        flush=True,
+                    )
+                    continue
+                except httpx.RequestError as exc:
+                    print(
+                        f"[sustech-rag] request failed for {url}: {exc}, skipping.",
+                        flush=True,
+                    )
                     continue
 
                 final_url = self._normalize_url(str(response.url))
@@ -147,17 +154,19 @@ class SiteCrawler:
         soup = BeautifulSoup(html, "html.parser")
         fallback_title = soup.title.get_text(strip=True) if soup.title else url
 
-        if Document is not None:
-            try:
-                readable = Document(html)
-                title = readable.short_title() or fallback_title
-                body_html = readable.summary(html_partial=True)
-                body_soup = BeautifulSoup(body_html, "html.parser")
-                text = body_soup.get_text("\n", strip=True)
-                if text:
-                    return title, text, "readability_lxml"
-            except Exception:
-                pass
+        try:
+            readable = Document(html)
+            title = readable.short_title() or fallback_title
+            body_html = readable.summary(html_partial=True)
+            body_soup = BeautifulSoup(body_html, "html.parser")
+            text = body_soup.get_text("\n", strip=True)
+            if text:
+                return title, text, "readability_lxml"
+        except Exception:
+            print(
+                f"[sustech-rag] readability-lxml failed for {url}, falling back to bs4",
+                flush=True,
+            )
 
         main_node = self._select_fallback_main_node(soup)
         text = main_node.get_text("\n", strip=True)
@@ -226,4 +235,12 @@ class SiteCrawler:
             "script, style, noscript, header, footer, nav, aside, form, iframe, svg"
         ):
             node.decompose()
-        return pruned.find("main") or pruned.find("article") or pruned.body or pruned
+        main = pruned.find("main") or pruned.find("article") or pruned.body
+        if main is None:
+            print(
+                "[sustech-rag] no valid main content node found (no main/article/body), "
+                "returning empty pruned document.",
+                flush=True,
+            )
+            return pruned
+        return main

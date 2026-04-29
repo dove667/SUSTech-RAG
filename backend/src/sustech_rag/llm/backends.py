@@ -1,181 +1,283 @@
 from __future__ import annotations
 
+import json
 import subprocess
+import time
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
 from pathlib import Path
 
-import dashscope
+import httpx
 
 from sustech_rag.config.models import AppConfig
 from sustech_rag.utils.platform import default_llama_binary_name, is_windows
 
 
 class LLMBackend(ABC):
-    """
-    LLM 后端抽象基类。
-    定义所有大语言模型后端的统一接口。
-    输入参数：无。
-    输出参数：用于实现统一生成能力的后端抽象对象。
-    """
+    """LLM backend abstract interface."""
 
     @abstractmethod
     def generate(self, prompt: str) -> str:
-        """
-        生成文本结果。
-        接收提示词并返回模型生成内容的统一接口。
-        输入参数：prompt，用户输入的提示词文本。
-        输出参数：模型生成的文本结果。
+        raise NotImplementedError
+
+    @abstractmethod
+    def generate_stream(self, messages: list[dict]) -> Iterator[tuple[str, str]]:
+        """Yield (event_type, text) tuples as tokens are produced.
+        event_type is ``"think"`` or ``"content"``.
         """
         raise NotImplementedError
 
+    @abstractmethod
+    def verify(self) -> tuple[bool, str]:
+        raise NotImplementedError
+
+    def start(self) -> None:
+        """Pre-load / warm-up the backend (called once at startup)."""
+
+    def shutdown(self) -> None:
+        """Release resources (subprocess, memory, etc.)."""
+
 
 class LlamaCppBackend(LLMBackend):
+    """Persistent llama.cpp backend using llama-server HTTP API.
+
+    Starts *llama-server* once so the GGUF model stays loaded in memory.
+    Subsequent ``generate()`` calls use the OpenAI-compatible ``/v1/completions`` endpoint.
+    """
+
     def __init__(self, config: AppConfig) -> None:
-        """
-        初始化 llama.cpp 后端。
-        根据配置准备本地 llama.cpp 推理所需参数。
-        输入参数：config，应用配置对象，包含 LLM 本地后端相关设置。
-        输出参数：无，完成实例属性初始化。
-        """
+        from sustech_rag.utils.ensure_deps import ensure_gguf_model, ensure_llama_cpp_binary
+
         local = config.llm.local
-        self.binary = self._resolve_binary_path(
+        raw_binary = self._resolve_binary_path(
             local.binary_path or default_llama_binary_name()
         )
-        self.model_path = local.model_path
-        self.device_mode = local.device_mode
-        self.device_name = local.device_name
-        self.gpu_layers = local.gpu_layers
-        self.threads = local.threads
-        self.threads_batch = local.threads_batch
-        self.single_turn = local.single_turn
-        self.simple_io = local.simple_io
-        self.reasoning = local.reasoning
-        self.n_ctx = local.n_ctx
-        self.temperature = local.temperature
-        self.max_tokens = local.max_tokens
-        self.extra_args = local.extra_args
+        self.binary = ensure_llama_cpp_binary(raw_binary)
+        self.model_path = ensure_gguf_model(
+            local.model_path,
+            local.hf_repo_id,
+            local.hf_filename,
+        )
+        self._device_mode = local.device_mode
+        self._device_name = local.device_name
+        self._gpu_layers = local.gpu_layers
+        self._threads = local.threads
+        self._threads_batch = local.threads_batch
+        self._reasoning = local.reasoning
+        self._n_ctx = local.n_ctx
+        self._temperature = local.temperature
+        self._max_tokens = local.max_tokens
+        self._stop = local.stop
+        self._extra_args = local.extra_args
+        self._host = "127.0.0.1"
+        self._port = local.server_port
+        self._proc: subprocess.Popen | None = None
 
-    def generate(self, prompt: str) -> str:
-        """
-        调用 llama.cpp 生成文本。
-        组装命令行参数并执行本地 llama.cpp 进程生成回复。
-        输入参数：prompt，用户输入的提示词文本。
-        输出参数：llama.cpp 返回并清理后的文本结果。
-        """
-        if not self.model_path:
-            raise ValueError("llama.cpp model path is not configured.")
+    # -- lifecycle ----------------------------------------------------------
+
+    def start(self) -> None:
+        """Launch llama-server and wait until /health responds, then warm-up."""
+        self._start_process()
+        print("[sustech-rag] warm-up inference ...", flush=True)
+        result = self.generate("Hello.")
+        print(f"[sustech-rag] model hot & ready (warm-up: {len(result)} chars)", flush=True)
+
+    def _start_process(self) -> None:
         cmd = [self.binary]
         cmd.extend(self._build_runtime_args())
-        cmd.extend(
-            [
-                "-m",
-                self.model_path,
-                "-c",
-                str(self.n_ctx),
-                "-n",
-                str(self.max_tokens),
-                "--temp",
-                str(self.temperature),
-                "-p",
-                prompt,
-            ]
+        cmd.extend([
+            "-m", self.model_path,
+            "--host", self._host,
+            "--port", str(self._port),
+            "-c", str(self._n_ctx),
+        ])
+        cmd.extend(self._extra_args)
+        print(f"[sustech-rag] starting llama-server on {self._host}:{self._port} ...", flush=True)
+        self._proc = subprocess.Popen(
+            cmd,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
         )
-        cmd.extend(self.extra_args)
-        completed = subprocess.run(cmd, check=True, capture_output=True, text=True, encoding="utf-8")
-        return completed.stdout.strip()
+        self._wait_until_ready()
+
+    def _wait_until_ready(self, timeout: float = 120) -> None:
+        """Poll /health until the server responds OK."""
+        deadline = time.time() + timeout
+        attempts = 0
+        last_error: str | None = None
+        while time.time() < deadline:
+            if self._proc is not None and self._proc.poll() is not None:
+                stderr = b""
+                if self._proc.stderr:
+                    try:
+                        stderr = self._proc.stderr.read()
+                    except OSError as exc:
+                        stderr = f"(failed to read stderr: {exc})".encode()
+                raise RuntimeError(
+                    "llama-server exited unexpectedly. stderr: "
+                    + stderr.decode("utf-8", errors="replace").strip()
+                )
+            try:
+                resp = httpx.get(
+                    f"http://{self._host}:{self._port}/health", timeout=2
+                )
+                if resp.status_code == 200:
+                    print("[sustech-rag] llama-server is ready.", flush=True)
+                    return
+            except httpx.RequestError as exc:
+                last_error = str(exc)
+            attempts += 1
+            time.sleep(0.5)
+        msg = f"llama-server did not become ready within {timeout}s (polled {attempts} times"
+        if last_error:
+            msg += f", last error: {last_error}"
+        msg += ")"
+        raise RuntimeError(msg)
+
+    def shutdown(self) -> None:
+        proc = self._proc
+        if proc is None:
+            return
+        try:
+            proc.terminate()
+            proc.wait(timeout=10)
+        except Exception:
+            proc.kill()
+        self._proc = None
+
+    # -- verify -------------------------------------------------------------
+
+    def verify(self) -> tuple[bool, str]:
+        if not Path(self.binary).exists():
+            return False, f"llama-server binary not found: {self.binary}"
+        if not self.model_path:
+            return False, "llama.cpp model path is not configured"
+        if not Path(self.model_path).exists():
+            return False, f"GGUF model not found: {self.model_path}"
+        return True, "ok"
+
+    # -- generate -----------------------------------------------------------
+
+    def generate(self, prompt: str) -> str:
+        if self._proc is None or self._proc.poll() is not None:
+            raise RuntimeError("llama-server is not running")
+
+        payload: dict = {
+            "prompt": prompt,
+            "temperature": self._temperature,
+            "max_tokens": self._max_tokens,
+            "stream": False,
+        }
+        if self._stop:
+            payload["stop"] = self._stop
+        try:
+            resp = httpx.post(
+                f"http://{self._host}:{self._port}/v1/completions",
+                json=payload,
+                timeout=300,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return data["choices"][0]["text"].strip()
+        except httpx.HTTPError as exc:
+            raise RuntimeError(f"llama-server request failed: {exc}") from exc
+
+    def generate_stream(self, messages: list[dict]) -> Iterator[tuple[str, str]]:
+        """Stream via /v1/chat/completions; yields ("think", text) or ("content", text)."""
+        if self._proc is None or self._proc.poll() is not None:
+            raise RuntimeError("llama-server is not running")
+
+        payload: dict = {
+            "messages": messages,
+            "temperature": self._temperature,
+            "max_tokens": self._max_tokens,
+            "stream": True,
+        }
+        if self._stop:
+            payload["stop"] = self._stop
+        try:
+            with httpx.stream(
+                "POST",
+                f"http://{self._host}:{self._port}/v1/chat/completions",
+                json=payload,
+                timeout=300,
+            ) as resp:
+                resp.raise_for_status()
+                for line in resp.iter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    data_str = line[6:]
+                    if data_str == "[DONE]":
+                        break
+                    try:
+                        data = json.loads(data_str)
+                        choices = data.get("choices", [])
+                        if choices:
+                            delta = choices[0].get("delta", {})
+                            think = delta.get("reasoning_content", "")
+                            text = delta.get("content", "")
+                            if think:
+                                yield ("think", think)
+                            if text:
+                                yield ("content", text)
+                    except json.JSONDecodeError:
+                        # malformed SSE data line — log a short snippet for diagnostics
+                        printable = data_str[:120]
+                        print(
+                            f"[sustech-rag] skipped malformed SSE JSON: {printable}",
+                            flush=True,
+                        )
+                        continue
+        except httpx.HTTPError as exc:
+            raise RuntimeError(f"llama-server stream request failed: {exc}") from exc
+
+    # -- helpers ------------------------------------------------------------
 
     def _resolve_binary_path(self, raw: str) -> str:
-        """
-        解析 llama.cpp 可执行文件路径。
-        在 Windows 环境下自动补全 .exe 后缀并返回可执行路径。
-        输入参数：raw，原始二进制文件路径或文件名。
-        输出参数：解析后的可执行文件路径。
-        """
         path = Path(raw)
         if is_windows() and not path.suffix and path.with_suffix(".exe").exists():
             return str(path.with_suffix(".exe"))
         return raw
 
     def _build_runtime_args(self) -> list[str]:
-        """
-        构建 llama.cpp 运行参数。
-        根据设备模式、GPU 层数、线程数及输出模式生成运行参数列表。
-        输入参数：无。
-        输出参数：llama.cpp 命令行参数列表。
-        """
         args: list[str] = []
         device_arg = self._resolve_device_arg()
         if device_arg is not None:
             args.extend(["--device", device_arg])
-        if self.gpu_layers:
-            args.extend(["-ngl", str(self.gpu_layers)])
-        if self.threads > 0:
-            args.extend(["-t", str(self.threads)])
-        if self.threads_batch > 0:
-            args.extend(["-tb", str(self.threads_batch)])
-        if self.single_turn:
-            args.append("--single-turn")
-        if self.simple_io:
-            args.append("--simple-io")
-        if self.reasoning:
-            args.extend(["--reasoning", self.reasoning])
+        if self._gpu_layers:
+            args.extend(["-ngl", str(self._gpu_layers)])
+        if self._threads > 0:
+            args.extend(["-t", str(self._threads)])
+        if self._threads_batch > 0:
+            args.extend(["-tb", str(self._threads_batch)])
+        if self._reasoning:
+            args.extend(["--reasoning", self._reasoning])
         return args
 
+    _KNOWN_DEVICE_MODES = {
+        "", "auto", "cpu", "custom",
+        "metal", "gpu", "cuda", "vulkan", "sycl", "kompute", "opencl",
+    }
+
     def _resolve_device_arg(self) -> str | None:
-        """
-        解析设备参数值。
-        将配置中的 device_mode 转换为 llama.cpp 可接受的 --device 参数。
-        输入参数：无。
-        输出参数：可用的设备参数字符串，或在自动模式下返回 None。
-        """
-        mode = self.device_mode.lower().strip()
+        mode = self._device_mode.lower().strip()
         if mode in {"", "auto"}:
             return None
         if mode == "cpu":
             return "none"
         if mode == "custom":
-            if not self.device_name:
+            if not self._device_name:
                 raise ValueError("llama.cpp device_mode=custom requires device_name.")
-            return self.device_name
-        if mode in {"metal", "gpu"}:
-            return self.device_name or None
-        return self.device_name or mode
-
-
-class DashScopeBackend(LLMBackend):
-    def __init__(self, config: AppConfig) -> None:
-        """
-        初始化 DashScope 后端。
-        读取 DashScope 模型配置并设置 API 密钥。
-        输入参数：config，应用配置对象，包含 DashScope 相关设置。
-        输出参数：无，完成实例属性初始化。
-        """
-        self.model = config.llm.dashscope.model
-        self.temperature = config.llm.dashscope.temperature
-        dashscope.api_key = config.llm.dashscope.api_key
-
-    def generate(self, prompt: str) -> str:
-        """
-        调用 DashScope 生成文本。
-        通过 DashScope Generation API 发送提示词并返回生成结果。
-        输入参数：prompt，用户输入的提示词文本。
-        输出参数：DashScope 返回并清理后的文本结果。
-        """
-        response = dashscope.Generation.call(
-            model=self.model,
-            prompt=prompt,
-            temperature=self.temperature,
+            return self._device_name
+        if mode in self._KNOWN_DEVICE_MODES:
+            return self._device_name or mode
+        raise ValueError(
+            f"Unknown device_mode: {self._device_mode!r}. "
+            f"Expected one of: {', '.join(sorted(self._KNOWN_DEVICE_MODES))}."
         )
-        return response.output.text.strip()
 
 
-def build_llm_backend(config: AppConfig) -> LLMBackend:
-    """
-    构建 LLM 后端实例。
-    根据配置选择并创建 DashScope 或 llama.cpp 后端实现。
-    输入参数：config，应用配置对象，包含 LLM 后端类型与参数。
-    输出参数：已初始化的 LLMBackend 实例。
-    """
-    if config.llm.backend == "dashscope":
-        return DashScopeBackend(config)
+def build_llm_backend(config: AppConfig) -> LlamaCppBackend:
+    """Build the LLM backend (currently only llama.cpp is supported)."""
     return LlamaCppBackend(config)

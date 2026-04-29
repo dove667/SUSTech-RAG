@@ -9,7 +9,7 @@ const DEFAULTS = () => ({
   overrides: {},                   // partial override of CSS vars — wins over preset
 
   apiBaseUrl: '/api',
-  apiKey: '',
+  identityId: '',
   model: 'default',
   knowledgeBaseIds: [],
   temperature: 0.3,
@@ -21,7 +21,6 @@ const DEFAULTS = () => ({
   sendWithEnter: true,
   showReferences: true,
   autoCollapseThink: true,
-  demoMode: false,                 // force local demo mode without a backend
   renderLatex: true,
 });
 
@@ -59,8 +58,7 @@ export const useSettings = defineStore('settings', {
       applyTheme(this.themeVars);
     },
     persist() {
-      const toSave = { ...this.$state };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.$state));
     },
     setPreset(id) {
       this.preset = id;

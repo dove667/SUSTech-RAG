@@ -75,9 +75,9 @@ class TestIndexing:
         config = _make_config(tmp_path, batch_size=8)
         build_vector_index(config, rebuild=True)
 
-        import chromadb
+        from sustech_rag.utils.chroma_client import persistent_client
 
-        client = chromadb.PersistentClient(path=str(tmp_path / "vector_store"))
+        client = persistent_client(str(tmp_path / "vector_store"))
         coll = client.get_collection("test-collection")
         assert coll.count() == 10
 
@@ -96,15 +96,14 @@ class TestIndexing:
         ]
         write_jsonl(interim / "chunks.jsonl", chunks)
 
-        import chromadb
-
         config = _make_config(tmp_path)
         chroma_path = str(tmp_path / "vector_store")
 
         from sustech_rag.indexing.vector_index import build_vector_index
+        from sustech_rag.utils.chroma_client import persistent_client
 
         build_vector_index(config, rebuild=False)
-        client = chromadb.PersistentClient(path=chroma_path)
+        client = persistent_client(chroma_path)
         coll = client.get_collection("test-collection")
         assert coll.count() == 1
 

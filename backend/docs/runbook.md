@@ -1,125 +1,45 @@
-# Runbook
+# Backend Runbook
 
-## 1. 创建 Python 3.11 环境
+## 1. 准备环境
 
 ```bash
-uv python install 3.11
-uv venv --python 3.11
+cd backend
 uv sync
 ```
 
-## 2. 配置环境变量
+如需运行测试和 lint：
 
 ```bash
-cp .env.example .env
+uv sync --extra dev
 ```
 
-需要时填写：
-
-- `LLAMA_CPP_BINARY`
-- `LLAMA_CPP_MODEL_PATH`
-
-## 2.1 本地模型优先目录
-
-默认配置会优先从这些本地目录加载模型：
-
-- `data/models/embeddings/BAAI/bge-small-zh-v1.5`
-- `data/models/rerankers/BAAI/bge-reranker-v2-m3`
-- `data/models/llm/qwen/Qwen3-8B-Q4_K_M.gguf`
-
-## 2.2 llama.cpp 运行方式
-
-### macOS
-
-推荐优先使用系统安装位置，而不是只复制一个 `llama-cli` 文件：
+## 2. 检查配置
 
 ```bash
-brew install llama.cpp
-brew --prefix llama.cpp
+uv run sustech-rag paths
 ```
 
-Homebrew 常见二进制路径：
+默认配置文件是 `configs/default.yaml`。重要路径：
+
+- `project.data_dir`
+- `vector_store.persist_dir`
+- `embedding.local_path`
+- `retrieval.reranker_local_path`
+- `llm.local.model_path`
+
+## 3. 准备模型
+
+默认本地模型位置：
 
 ```text
-/opt/homebrew/opt/llama.cpp/bin/llama-cli
+data/models/embeddings/BAAI/bge-small-zh-v1.5
+data/models/rerankers/BAAI/bge-reranker-v2-m3
+data/models/llm/qwen/Qwen3-8B-Q4_K_M.gguf
 ```
 
-如果你想让项目使用 Homebrew 安装位置，可以设置：
+如果 `llama-server` 不在 PATH，后端会尝试下载 llama.cpp release。如果 GGUF 不存在，后端会根据 `hf_repo_id` 和 `hf_filename` 尝试下载模型文件。
 
-```bash
-export LLAMA_CPP_BINARY=/opt/homebrew/opt/llama.cpp/bin/llama-cli
-```
-
-推荐保持 `configs/default.yaml -> llm.local.binary_path` 为空，优先通过环境变量指定系统安装路径。
-
-### Windows
-
-推荐使用 `llama.cpp` 官方 release 解压目录中的 `llama-cli.exe`，然后把路径填到：
-
-- `LLAMA_CPP_BINARY`
-- 或 `configs/default.yaml -> llm.local.binary_path`
-
-### 配置项说明
-
-`configs/default.yaml -> llm.local` 支持这些运行选项：
-
-- `device_mode`
-  - `auto`：让 `llama.cpp` 自动选择 GPU 后端
-  - `cpu`：强制纯 CPU，等价于 `--device none`
-  - `custom`：手动指定 `device_name`
-- `device_name`
-  - 仅在 `custom` 时使用，原样传给 `--device`
-- `gpu_layers`
-  - 透传给 `-ngl`
-  - `0` 表示不做 GPU 层 offload
-  - `auto` 表示交给 `llama.cpp` 自行决定
-- `threads` / `threads_batch`
-  - CPU 推理线程数
-- `single_turn`
-  - 是否适合 CLI/程序单轮生成
-- `simple_io`
-  - 是否启用简化 I/O，适合子进程调用
-- `reasoning`
-  - `off` / `on` / `auto`
-- `extra_args`
-  - 额外透传参数列表
-
-### 推荐配置
-
-保守稳定：
-
-```yaml
-llm:
-  local:
-    binary_path: ""
-    device_mode: "cpu"
-    gpu_layers: "0"
-    single_turn: true
-    simple_io: true
-    reasoning: "off"
-```
-
-尝试 GPU / Metal：
-
-```yaml
-llm:
-  local:
-    binary_path: ""
-    device_mode: "auto"
-    gpu_layers: "auto"
-```
-
-指定特定设备：
-
-```yaml
-llm:
-  local:
-    binary_path: ""
-    device_mode: "custom"
-    device_name: "your-device-name"
-```
-
-## 3. 运行数据流程
+## 4. 构建知识库
 
 ```bash
 uv run sustech-rag crawl
@@ -127,15 +47,57 @@ uv run sustech-rag preprocess
 uv run sustech-rag index
 ```
 
-## 4. 提问
+需要清空并重建 collection：
 
 ```bash
-uv run sustech-rag query "南科大本科招生有什么特色？"
+uv run sustech-rag index --rebuild
 ```
 
-## 5. 未来增强
+## 5. 本地验证
 
-- 增加 robots / sitemap 感知
-- 增加更强的正文抽取与语言过滤
-- 根据机器配置为 reranker / embedding 增加 device 与 batch 参数
-- 如果后续实际抓到 PDF，再对 PDF / 招生简章做更细粒度版面处理
+```bash
+uv run sustech-rag query "南科大有哪些学院？"
+```
+
+这条命令会临时启动 `llama-server` 并在回答后关闭；如果要连续测试多轮问答，请启动 API 服务。
+
+启动 API：
+
+```bash
+uv run sustech-rag serve --host 127.0.0.1 --port 8000
+```
+
+健康检查：
+
+```bash
+curl http://127.0.0.1:8000/api/health
+```
+
+## 6. 与前端联调
+
+```bash
+cd ../frontend
+npm install
+npm run dev
+```
+
+前端默认把 `/api` 代理到 `127.0.0.1:8000`。
+
+## 7. 测试
+
+```bash
+uv run pytest
+uv run ruff check .
+```
+
+索引测试依赖本地 embedding 模型；模型不存在时会跳过。Chroma 0.5.x 会按 path 缓存客户端实例，测试或脚本中混用不同 `Settings` 可能触发 settings 不一致异常。
+
+## 8. 常见故障
+
+`llama-server binary not found`：安装 llama.cpp，或让 `llama-server` 出现在 PATH，或设置 `llm.local.binary_path`。
+
+`GGUF model not found`：把 GGUF 放到 `llm.local.model_path`，或配置 `hf_repo_id` / `hf_filename` 允许自动下载。
+
+`components not ready`：先确认 Chroma collection 已通过 `index` 构建，再确认 reranker 和 GGUF 路径存在。
+
+前端跨域失败：把前端 origin 加到 `SUSTECH_RAG_CORS_ORIGINS`，多个 origin 用逗号分隔。

@@ -1,28 +1,62 @@
-# Architecture
+# Backend Architecture
 
-## Pipeline
+后端围绕一个本地优先的 RAG 流水线组织，CLI 和 API 共用同一套配置、索引、检索和生成组件。
 
-1. `crawl`: 当前默认抓取 HTML 原始内容与元数据
-2. `preprocess`: 提取正文、清洗、去重、质量过滤
-3. `chunk`: 分块并生成可索引文档
-4. `index`: 嵌入并写入 ChromaDB
-5. `query`: 相似度召回、重排序、拼接上下文、调用生成模型
-
-## Storage Layout
+## 数据流
 
 ```text
-data/raw/pages/         原始 HTML
-data/raw/pdfs/          预留的 PDF 目录（当前默认未使用）
-data/interim/docs.jsonl 清洗后的文档
-data/interim/chunks.jsonl
-data/cache/huggingface  embedding / reranker 模型缓存
-data/models/            本地 embedding / reranker / GGUF 模型
-data/vector_store/
+SiteCrawler
+  -> RawDocument
+  -> cleaning.build_effective_text
+  -> chunk_document
+  -> VectorStoreIndex + ChromaDB
+  -> RetrievalEngine
+  -> BGECrossEncoderReranker
+  -> RagService
+  -> LlamaCppBackend
+  -> FastAPI SSE
 ```
 
-## Cross-OS
+## 模块职责
 
-- 使用 `pathlib.Path`
-- 使用 `subprocess.run(list[str])` 代替 shell 拼接
-- 显式处理 Windows 下 `llama-cli.exe`
-- 所有文本读写统一使用 UTF-8
+- `config/`：Pydantic 配置模型和 YAML 加载，相对路径解析为绝对路径。
+- `crawlers/`：BFS 抓取网页，保存 HTML/PDF 原始文件和 `raw_documents.jsonl`。
+- `processing/`：正文重建、噪声过滤、质量检查、分块和 PDF 文本提取。
+- `indexing/`：读取 `chunks.jsonl`，写入 ChromaDB collection。
+- `retrieval/`：加载 Chroma index，先相似度召回，再 BGE cross-encoder rerank。
+- `llm/`：管理持久化 `llama-server` 子进程，并调用 completions/chat-completions。
+- `pipeline/`：面向 CLI/API 的编排层。
+- `api/`：FastAPI app、路由、schema 和 SSE 帧。
+- `utils/`：I/O、平台差异、Chroma client、模型缓存和依赖确保。
+
+## API 生命周期
+
+`create_app()` 的 lifespan 会：
+
+1. 加载配置。
+2. 初始化 `RagService`，这会加载 embedding、Chroma、reranker 和 LLM backend。
+3. 执行 health check。
+4. 启动 `llama-server` 并做一次 warm-up。
+5. 服务关闭时终止 llama.cpp 子进程。
+
+因此首次启动可能较慢；这属于预加载模型的预期行为。
+
+## 存储约定
+
+```text
+data/raw/pages/              原始 HTML 文件
+data/raw/pdfs/               PDF 文件，默认未启用抓取
+data/raw/raw_documents.jsonl 抓取清单
+data/interim/documents.cleaned.jsonl
+data/interim/chunks.jsonl
+data/vector_store/chroma/    ChromaDB
+data/models/                 本地模型
+data/models/.cache/          HF_HOME / hub / transformers cache
+```
+
+## 当前边界
+
+- 只实现了本地 llama.cpp 后端。
+- API schema 已保留 `model`、`knowledge_base_ids` 和 `options`，但大部分运行参数仍由 YAML 配置控制。
+- API 鉴权应由反向代理或后续中间件补齐。
+- PDF 抓取/解析代码保留，但默认关闭。

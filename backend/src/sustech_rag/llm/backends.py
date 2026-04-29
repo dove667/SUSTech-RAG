@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import subprocess
 import time
-from abc import ABC, abstractmethod
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -13,32 +12,7 @@ from sustech_rag.config.models import AppConfig
 from sustech_rag.utils.platform import default_llama_binary_name, is_windows
 
 
-class LLMBackend(ABC):
-    """LLM backend abstract interface."""
-
-    @abstractmethod
-    def generate(self, prompt: str) -> str:
-        raise NotImplementedError
-
-    @abstractmethod
-    def generate_stream(self, messages: list[dict]) -> Iterator[tuple[str, str]]:
-        """Yield (event_type, text) tuples as tokens are produced.
-        event_type is ``"think"`` or ``"content"``.
-        """
-        raise NotImplementedError
-
-    @abstractmethod
-    def verify(self) -> tuple[bool, str]:
-        raise NotImplementedError
-
-    def start(self) -> None:
-        """Pre-load / warm-up the backend (called once at startup)."""
-
-    def shutdown(self) -> None:
-        """Release resources (subprocess, memory, etc.)."""
-
-
-class LlamaCppBackend(LLMBackend):
+class LlamaCppBackend:
     """Persistent llama.cpp backend using llama-server HTTP API.
 
     Starts *llama-server* once so the GGUF model stays loaded in memory.

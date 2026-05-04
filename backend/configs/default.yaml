@@ -39,22 +39,21 @@ vector_store:
   collection_name: "sustech-campus-kb"
 
 llm:
-  local:
-    binary_path: ""
-    model_path: "data/models/llm/qwen/Qwen3-8B-Q4_K_M.gguf"
-    hf_repo_id: "Qwen/Qwen3-8B-GGUF"
-    hf_filename: "Qwen3-8B-Q4_K_M.gguf"
-    device_mode: "auto"
-    device_name: ""
-    gpu_layers: "0"
-    threads: 0
-    threads_batch: 0
-    reasoning: "off"
-    n_ctx: 8192
-    temperature: 0.2
-    max_tokens: 512
-    stop:
-      - "<|im_end|>"
-      - "<|endoftext|>"
-    server_port: 8081
-    extra_args: []
+  binary_path: ""
+  model_path: "data/models/llm/qwen/Qwen3-8B-Q4_K_M.gguf"
+  hf_repo_id: "Qwen/Qwen3-8B-GGUF"
+  hf_filename: "Qwen3-8B-Q4_K_M.gguf"
+  device_mode: "auto"
+  device_name: ""
+  gpu_layers: "0"
+  threads: 0
+  threads_batch: 0
+  reasoning: "off"
+  n_ctx: 8192
+  temperature: 0.2
+  max_tokens: 512
+  stop:
+    - "<|im_end|>"
+    - "<|endoftext|>"
+  server_port: 8081
+  extra_args: []

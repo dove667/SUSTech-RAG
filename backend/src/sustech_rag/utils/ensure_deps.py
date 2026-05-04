@@ -19,7 +19,10 @@ def _download_llama_cpp_binary(dest_dir: Path) -> str:
     """Download the latest llama.cpp pre-built binary from GitHub releases and extract it."""
     api_url = "https://api.github.com/repos/ggerganov/llama.cpp/releases/latest"
     print("[sustech-rag] fetching latest llama.cpp release info...", flush=True)
-    req = Request(api_url, headers={"User-Agent": "sustech-rag", "Accept": "application/vnd.github+json"})
+    req = Request(
+        api_url,
+        headers={"User-Agent": "sustech-rag", "Accept": "application/vnd.github+json"},
+    )
     with urlopen(req, timeout=30) as resp:
         release = json.loads(resp.read().decode())
     print(f"[sustech-rag] latest release: {release['tag_name']}", flush=True)
@@ -158,18 +161,30 @@ def ensure_gguf_model(model_path: str, hf_repo_id: str, hf_filename: str) -> str
     if not hf_repo_id or not hf_filename:
         raise FileNotFoundError(
             f"GGUF model not found: {model_path}\n"
-            "Set llm.local.hf_repo_id and llm.local.hf_filename in config to enable auto-download."
+            "Set llm.hf_repo_id and llm.hf_filename in config "
+            "to enable auto-download."
         )
 
-    print(f"[sustech-rag] GGUF model not found, downloading {hf_repo_id}/{hf_filename} ...", flush=True)
+    print(
+        f"[sustech-rag] GGUF model not found, downloading {hf_repo_id}/{hf_filename} ...",
+        flush=True,
+    )
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
         from huggingface_hub import hf_hub_download
-        downloaded = hf_hub_download(repo_id=hf_repo_id, filename=hf_filename, local_dir=str(path.parent))
+
+        downloaded = hf_hub_download(
+            repo_id=hf_repo_id,
+            filename=hf_filename,
+            local_dir=str(path.parent),
+        )
         print(f"[sustech-rag] GGUF model downloaded to {downloaded}", flush=True)
         return downloaded
-    except ImportError:
-        raise RuntimeError("huggingface_hub is required to auto-download models. Run: pip install huggingface_hub")
+    except ImportError as exc:
+        raise RuntimeError(
+            "huggingface_hub is required to auto-download models. "
+            "Run: pip install huggingface_hub"
+        ) from exc
 
 
 def _make_executable(path: Path) -> None:

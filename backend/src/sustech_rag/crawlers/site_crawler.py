@@ -7,12 +7,12 @@ from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
 import httpx
 from bs4 import BeautifulSoup
+from readability import Document
 
 from sustech_rag.config.models import CrawlConfig
 from sustech_rag.pipeline.schemas import RawDocument
 from sustech_rag.utils.io import ensure_dir
 
-from readability import Document
 
 TRACKING_QUERY_PREFIXES = ("utm_",)
 TRACKING_QUERY_KEYS = {"spm", "from", "source", "_t", "_refluxos"}

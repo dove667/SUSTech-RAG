@@ -25,7 +25,7 @@ uv run sustech-rag paths
 - `vector_store.persist_dir`
 - `embedding.local_path`
 - `retrieval.reranker_local_path`
-- `llm.local.model_path`
+- `llm.model_path`
 
 ## 3. 准备模型
 
@@ -94,9 +94,9 @@ uv run ruff check .
 
 ## 8. 常见故障
 
-`llama-server binary not found`：安装 llama.cpp，或让 `llama-server` 出现在 PATH，或设置 `llm.local.binary_path`。
+`llama-server binary not found`：安装 llama.cpp，或让 `llama-server` 出现在 PATH，或设置 `llm.binary_path`。
 
-`GGUF model not found`：把 GGUF 放到 `llm.local.model_path`，或配置 `hf_repo_id` / `hf_filename` 允许自动下载。
+`GGUF model not found`：把 GGUF 放到 `llm.model_path`，或配置 `hf_repo_id` / `hf_filename` 允许自动下载。
 
 `components not ready`：先确认 Chroma collection 已通过 `index` 构建，再确认 reranker 和 GGUF 路径存在。
 

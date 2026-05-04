@@ -22,7 +22,7 @@ class LlamaCppBackend:
     def __init__(self, config: AppConfig) -> None:
         from sustech_rag.utils.ensure_deps import ensure_gguf_model, ensure_llama_cpp_binary
 
-        local = config.llm.local
+        local = config.llm
         raw_binary = self._resolve_binary_path(
             local.binary_path or default_llama_binary_name()
         )

@@ -89,8 +89,8 @@ SUSTECH_RAG_CONFIG=/absolute/path/to/config.yaml uvicorn sustech_rag.api.app:app
 - `embedding.local_path`：embedding 本地模型
 - `retrieval.reranker_local_path`：reranker 本地模型
 - `vector_store.persist_dir`：Chroma 持久化目录
-- `llm.local.model_path`：GGUF 权重
-- `llm.local.server_port`：llama-server 端口
+- `llm.model_path`：GGUF 权重
+- `llm.server_port`：llama-server 端口
 
 相对路径会按配置文件所在项目根目录解析。
 
@@ -115,22 +115,20 @@ data/models/.cache/              Hugging Face 缓存
 - 非流式 CLI 查询走 `/v1/completions`
 - WebUI 流式问答走 `/v1/chat/completions`
 
-如果 `llm.local.binary_path` 为空，会优先查找 PATH 中的 `llama-server`；缺失时尝试自动下载 llama.cpp release。保守调试可设置：
+如果 `llm.binary_path` 为空，会优先查找 PATH 中的 `llama-server`；缺失时尝试自动下载 llama.cpp release。保守调试可设置：
 
 ```yaml
 llm:
-  local:
-    device_mode: "cpu"
-    gpu_layers: "0"
+  device_mode: "cpu"
+  gpu_layers: "0"
 ```
 
 尝试 GPU/Metal：
 
 ```yaml
 llm:
-  local:
-    device_mode: "auto"
-    gpu_layers: "auto"
+  device_mode: "auto"
+  gpu_layers: "auto"
 ```
 
 ## 测试与质量检查

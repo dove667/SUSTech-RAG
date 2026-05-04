@@ -40,9 +40,11 @@ def load_config(config_path: str | None = None) -> AppConfig:
     if config.embedding.local_path:
         config.embedding.local_path = str((project_root / config.embedding.local_path).resolve())
     if config.retrieval.reranker_local_path:
-        config.retrieval.reranker_local_path = str((project_root / config.retrieval.reranker_local_path).resolve())
-    if config.llm.local.binary_path:
-        config.llm.local.binary_path = str((project_root / config.llm.local.binary_path).resolve())
-    if config.llm.local.model_path:
-        config.llm.local.model_path = str((project_root / config.llm.local.model_path).resolve())
+        config.retrieval.reranker_local_path = str(
+            (project_root / config.retrieval.reranker_local_path).resolve()
+        )
+    if config.llm.binary_path:
+        config.llm.binary_path = str((project_root / config.llm.binary_path).resolve())
+    if config.llm.model_path:
+        config.llm.model_path = str((project_root / config.llm.model_path).resolve())
     return config

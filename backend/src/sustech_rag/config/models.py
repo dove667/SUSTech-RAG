@@ -149,18 +149,6 @@ class LocalLLMConfig(BaseModel):
     extra_args: list[str] = Field(default_factory=list)
 
 
-class LLMConfig(BaseModel):
-    """
-    本地大模型配置。
-    输入参数：
-    - local：本地大模型配置。
-    输出参数：
-    - LLMConfig：返回大模型总配置模型实例。
-    """
-
-    local: LocalLLMConfig
-
-
 class AppConfig(BaseModel):
     """
     定义应用全局配置，汇总各模块子配置。
@@ -171,7 +159,7 @@ class AppConfig(BaseModel):
     - embedding：嵌入配置。
     - retrieval：检索配置。
     - vector_store：向量库配置。
-    - llm：大模型配置。
+    - llm：本地大模型配置。
     输出参数：
     - AppConfig：返回应用全局配置模型实例。
     """
@@ -182,4 +170,4 @@ class AppConfig(BaseModel):
     embedding: EmbeddingConfig
     retrieval: RetrievalConfig
     vector_store: VectorStoreConfig
-    llm: LLMConfig
+    llm: LocalLLMConfig

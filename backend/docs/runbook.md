@@ -37,7 +37,17 @@ data/models/rerankers/BAAI/bge-reranker-v2-m3
 data/models/llm/qwen/Qwen3-8B-Q4_K_M.gguf
 ```
 
-如果 `llama-server` 不在 PATH，后端会尝试下载 llama.cpp release。如果 GGUF 不存在，后端会根据 `hf_repo_id` 和 `hf_filename` 尝试下载模型文件。
+`llama-server` 必须在系统 PATH 中。可通过准备脚本下载模型并安装当前平台匹配的
+llama.cpp release：
+
+```bash
+uv run sustech-rag download-llama
+uv run sustech-rag download-model
+```
+
+如果 llama.cpp 安装命令提示安装目录不在 PATH 中，按输出添加 PATH 后再启动后端。
+运行时不会自动下载 GGUF；缺失时请先运行模型下载命令，或把 `llm.model_path`
+指向已有 GGUF 文件。
 
 ## 4. 构建知识库
 
@@ -94,9 +104,9 @@ uv run ruff check .
 
 ## 8. 常见故障
 
-`llama-server binary not found`：安装 llama.cpp，或让 `llama-server` 出现在 PATH，或设置 `llm.binary_path`。
+`llama-server binary not found`：安装 llama.cpp，并让 `llama-server` 出现在 PATH。
 
-`GGUF model not found`：把 GGUF 放到 `llm.model_path`，或配置 `hf_repo_id` / `hf_filename` 允许自动下载。
+`GGUF model not found`：把 GGUF 放到 `llm.model_path`，或先运行 `uv run sustech-rag download-model`。
 
 `components not ready`：先确认 Chroma collection 已通过 `index` 构建，再确认 reranker 和 GGUF 路径存在。
 

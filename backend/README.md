@@ -115,7 +115,17 @@ data/models/.cache/              Hugging Face 缓存
 - 非流式 CLI 查询走 `/v1/completions`
 - WebUI 流式问答走 `/v1/chat/completions`
 
-如果 `llm.binary_path` 为空，会优先查找 PATH 中的 `llama-server`；缺失时尝试自动下载 llama.cpp release。保守调试可设置：
+后端只从系统 PATH 查找 `llama-server`。保守调试可设置：
+
+```bash
+uv run sustech-rag download-llama
+uv run sustech-rag download-model
+```
+
+这两个命令会分别安装当前平台匹配的 llama.cpp release、下载
+embedding/reranker/GGUF。若安装目录不在 PATH 中，llama.cpp 安装命令会打印需要添加的
+PATH 命令。后端运行时不会自动下载 GGUF；缺失时请先运行模型下载命令，或把
+`llm.model_path` 指向已有 GGUF 文件。
 
 ```yaml
 llm:

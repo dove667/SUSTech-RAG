@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Annotated
 
 import typer
 
@@ -46,7 +47,11 @@ def preprocess(config: str = typer.Option(None, help="Path to YAML config file."
 @app.command()
 def index(
     config: str = typer.Option(None, help="Path to YAML config file."),
-    rebuild: bool = typer.Option(False, "--rebuild", help="Delete existing collection before building index."),
+    rebuild: bool = typer.Option(
+        False,
+        "--rebuild",
+        help="Delete existing collection before building index.",
+    ),
 ) -> None:
     """
     构建向量索引，并输出索引持久化目录信息。
@@ -125,3 +130,34 @@ def paths(config: str = typer.Option(None, help="Path to YAML config file.")) ->
         Path("configs").resolve(),
     ]:
         typer.echo(str(path))
+
+
+@app.command("download-model")
+def download_model() -> None:
+    """下载 embedding、reranker 和 GGUF 模型到默认 data/models 目录。"""
+    from sustech_rag.utils.download_model import download_models
+
+    download_models()
+
+
+@app.command("download-llama")
+def download_llama(
+    install_dir: Annotated[
+        Path | None,
+        typer.Option(help="Directory for llama.cpp binaries. Add it to PATH if needed."),
+    ] = None,
+) -> None:
+    """安装当前平台匹配的 llama.cpp llama-server。"""
+    from sustech_rag.utils.download_llama import (
+        default_llama_install_dir,
+        install_llama_cpp,
+        path_contains,
+    )
+
+    target_dir = (install_dir or default_llama_install_dir()).expanduser()
+    install_llama_cpp(target_dir)
+    if path_contains(target_dir):
+        return
+
+    typer.echo()
+    typer.echo(f"Add this directory to PATH before running the backend: {target_dir}")

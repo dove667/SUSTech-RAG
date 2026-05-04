@@ -43,8 +43,6 @@ def load_config(config_path: str | None = None) -> AppConfig:
         config.retrieval.reranker_local_path = str(
             (project_root / config.retrieval.reranker_local_path).resolve()
         )
-    if config.llm.binary_path:
-        config.llm.binary_path = str((project_root / config.llm.binary_path).resolve())
     if config.llm.model_path:
         config.llm.model_path = str((project_root / config.llm.model_path).resolve())
     return config

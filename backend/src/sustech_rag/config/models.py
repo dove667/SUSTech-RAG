@@ -114,7 +114,6 @@ class LocalLLMConfig(BaseModel):
     """
     定义本地 llama.cpp 后端运行参数。
     输入参数：
-    - binary_path：llama-server 可执行文件路径，默认为空。
     - model_path：GGUF 模型路径，默认为空。
     - device_mode：设备模式，默认 cpu。
     - device_name：自定义设备名称，默认为空。
@@ -131,10 +130,7 @@ class LocalLLMConfig(BaseModel):
     - LocalLLMConfig：返回本地大模型配置模型实例。
     """
 
-    binary_path: str = ""
     model_path: str = ""
-    hf_repo_id: str = ""
-    hf_filename: str = ""
     device_mode: str = "cpu"
     device_name: str = ""
     gpu_layers: str = "0"

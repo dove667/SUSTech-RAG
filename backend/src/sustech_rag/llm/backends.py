@@ -9,7 +9,6 @@ from pathlib import Path
 import httpx
 
 from sustech_rag.config.models import AppConfig
-from sustech_rag.utils.platform import default_llama_binary_name, is_windows
 
 
 class LlamaCppBackend:
@@ -20,18 +19,11 @@ class LlamaCppBackend:
     """
 
     def __init__(self, config: AppConfig) -> None:
-        from sustech_rag.utils.ensure_deps import ensure_gguf_model, ensure_llama_cpp_binary
+        from sustech_rag.utils.runtime import ensure_gguf_model, ensure_llama_cpp_binary
 
         local = config.llm
-        raw_binary = self._resolve_binary_path(
-            local.binary_path or default_llama_binary_name()
-        )
-        self.binary = ensure_llama_cpp_binary(raw_binary)
-        self.model_path = ensure_gguf_model(
-            local.model_path,
-            local.hf_repo_id,
-            local.hf_filename,
-        )
+        self.binary = ensure_llama_cpp_binary()
+        self.model_path = ensure_gguf_model(local.model_path)
         self._device_mode = local.device_mode
         self._device_name = local.device_name
         self._gpu_layers = local.gpu_layers
@@ -207,12 +199,6 @@ class LlamaCppBackend:
             raise RuntimeError(f"llama-server stream request failed: {exc}") from exc
 
     # -- helpers ------------------------------------------------------------
-
-    def _resolve_binary_path(self, raw: str) -> str:
-        path = Path(raw)
-        if is_windows() and not path.suffix and path.with_suffix(".exe").exists():
-            return str(path.with_suffix(".exe"))
-        return raw
 
     def _build_runtime_args(self) -> list[str]:
         args: list[str] = []

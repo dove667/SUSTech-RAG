@@ -1,23 +1,20 @@
-"""
-Download embedding, reranker, and GGUF weights into backend/data/models/ (paths match configs/default.yaml).
+"""Download model weights into backend/data/models."""
 
-Usage (from repo root or backend/):
-  cd backend && uv run python scripts/download_models.py
-"""
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 from huggingface_hub import hf_hub_download, snapshot_download
 
-_BACKEND_ROOT = Path(__file__).resolve().parent.parent
+_BACKEND_ROOT = Path(__file__).resolve().parents[3]
 
 
-def main() -> None:
-    root = _BACKEND_ROOT
-    emb = root / "data" / "models" / "embeddings" / "BAAI" / "bge-small-zh-v1.5"
-    rer = root / "data" / "models" / "rerankers" / "BAAI" / "bge-reranker-v2-m3"
-    llm_dir = root / "data" / "models" / "llm" / "qwen"
+def download_models() -> None:
+    """Download embedding, reranker, and GGUF weights."""
+    emb = _BACKEND_ROOT / "data" / "models" / "embeddings" / "BAAI" / "bge-small-zh-v1.5"
+    rer = _BACKEND_ROOT / "data" / "models" / "rerankers" / "BAAI" / "bge-reranker-v2-m3"
+    llm_dir = _BACKEND_ROOT / "data" / "models" / "llm" / "qwen"
     gguf_name = "Qwen3-8B-Q4_K_M.gguf"
 
     emb.mkdir(parents=True, exist_ok=True)
@@ -39,7 +36,6 @@ def main() -> None:
 
     out_gguf = llm_dir / gguf_name
     if not out_gguf.is_file():
-        # hf_hub_download may place under subdir in some versions
         candidates = list(llm_dir.rglob(gguf_name))
         if not candidates:
             raise SystemExit(f"GGUF not found under {llm_dir}")
@@ -47,5 +43,12 @@ def main() -> None:
     print("Done. GGUF at:", out_gguf.resolve())
 
 
+def main() -> None:
+    download_models()
+
+
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        sys.exit(130)

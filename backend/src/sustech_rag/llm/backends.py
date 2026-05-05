@@ -226,6 +226,10 @@ class LlamaCppBackend:
             return None
         if mode == "cpu":
             return "none"
+        if mode == "metal":
+            # llama.cpp's Metal backend is selected implicitly on macOS when GPU
+            # layers are enabled; recent builds reject "--device metal".
+            return None
         if mode == "custom":
             if not self._device_name:
                 raise ValueError("llama.cpp device_mode=custom requires device_name.")
@@ -236,8 +240,3 @@ class LlamaCppBackend:
             f"Unknown device_mode: {self._device_mode!r}. "
             f"Expected one of: {', '.join(sorted(self._KNOWN_DEVICE_MODES))}."
         )
-
-
-def build_llm_backend(config: AppConfig) -> LlamaCppBackend:
-    """Build the LLM backend (currently only llama.cpp is supported)."""
-    return LlamaCppBackend(config)

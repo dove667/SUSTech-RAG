@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 
 from sustech_rag.config.models import AppConfig
-from sustech_rag.llm.backends import build_llm_backend
+from sustech_rag.llm.backends import LlamaCppBackend
 from sustech_rag.retrieval.engine import RetrievalEngine
 from sustech_rag.retrieval.reranker import RetrievedChunk
 
@@ -19,7 +19,7 @@ class RagService:
     def __init__(self, config: AppConfig) -> None:
         self.config = config
         self.retrieval = RetrievalEngine(config)
-        self.llm = build_llm_backend(config)
+        self.llm = LlamaCppBackend(config)
 
     def _build_chat_messages(
         self, query: str, chunks: list[RetrievedChunk], history: list[dict]
@@ -58,11 +58,6 @@ class RagService:
             f"<|{m['role']}|>\n{m['content']}" for m in msgs
         ) + "\n<|assistant|>\n"
         return self.llm.generate(prompt)
-
-    def answer_with_chunks(self, query: str) -> tuple[list[RetrievedChunk], str]:
-        chunks = self.retrieval.retrieve(query)
-        answer = self.answer(query)
-        return chunks, answer
 
     def answer_stream(self, messages: list[dict]) -> Iterator[tuple[str, object]]:
         """Retrieve and stream. Yields (event_type, data):

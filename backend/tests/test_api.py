@@ -46,18 +46,6 @@ def client(monkeypatch: pytest.MonkeyPatch, config_yaml: str):
         def health_check(self) -> dict:
             return {"status": "ready", "components": {"llm": "ok", "retrieval": "ok"}}
 
-        def answer_with_chunks(self, query: str) -> tuple[list[RetrievedChunk], str]:
-            return (
-                [
-                    RetrievedChunk(
-                        text="snippet text",
-                        score=0.5,
-                        metadata={"title": "Local Doc", "source_url": "http://127.0.0.1/page"},
-                    )
-                ],
-                "hello",
-            )
-
         def answer_stream(self, messages: list[dict]):
             yield ("reference", [
                 RetrievedChunk(

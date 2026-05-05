@@ -42,9 +42,9 @@ llm:
   model_path: "data/models/llm/qwen/Qwen3-8B-Q4_K_M.gguf"
   device_mode: "auto"
   device_name: ""
-  gpu_layers: "0"
-  threads: 0
-  threads_batch: 0
+  gpu_layers: "32" # 加载模型时放在 GPU 上的层数，Qwen3-8B 有 32 层
+  threads: 0 # 自动（通常 CPU 核心数）
+  threads_batch: 2 # 批处理线程数
   reasoning: "off"
   n_ctx: 8192
   temperature: 0.2

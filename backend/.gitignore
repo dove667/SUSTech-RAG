@@ -42,13 +42,3 @@ data/models/
 
 # Keep data dir in repo if empty
 !data/.gitkeep
-
-# Agent instructions
-AGENTS.md
-
-# Logs
-*.log
-
-# Temporary
-tmp/
-temp/

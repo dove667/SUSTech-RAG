@@ -1,25 +1,41 @@
-# Dependencies
-node_modules/
-
-# Build output
-dist/
-*.local
-.vite/
-
-# IDE
-.vscode/
-.idea/
-
-# OS
+# OS files
 .DS_Store
 Thumbs.db
 
-# Python
+# Editors
+.idea/
+.vscode/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+*.local
+
+# Python caches and virtual environments
 __pycache__/
-*.pyc
-*.egg-info/
+*.py[cod]
+*.pyo
+*.pyd
 .venv/
 venv/
 
-# Logs
+# Python packaging, lint, and test output
+*.egg-info/
+build/
+htmlcov/
+.coverage
+.coverage.*
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Node / Vite
+node_modules/
+dist/
+.vite/
+
+# Logs and temporary files
 *.log
+tmp/
+temp/

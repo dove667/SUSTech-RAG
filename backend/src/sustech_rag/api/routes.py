@@ -88,7 +88,10 @@ def _sync_stream(
                 yield sse_frame("error", {"code": "cancelled", "message": "generation cancelled"})
                 yield sse_frame(
                     "done",
-                    {"finish_reason": "cancelled", "usage": {"prompt_tokens": 0, "completion_tokens": 0}},
+                    {
+                        "finish_reason": "cancelled",
+                        "usage": {"prompt_tokens": 0, "completion_tokens": 0},
+                    },
                 )
                 return
             if event_type == "reference":

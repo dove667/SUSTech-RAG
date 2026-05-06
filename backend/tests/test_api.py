@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import re
 import time
 from pathlib import Path
@@ -9,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from sustech_rag.api.app import create_app
+from sustech_rag.config.loader import load_config
 from sustech_rag.retrieval.reranker import RetrievedChunk
 
 
@@ -67,7 +67,7 @@ def client(monkeypatch: pytest.MonkeyPatch, config_yaml: str):
             yield ("content.delta", "lo")
 
     monkeypatch.setattr("sustech_rag.api.app.RagService", FakeRag)
-    with TestClient(create_app(config_yaml)) as tc:
+    with TestClient(create_app(load_config(config_yaml))) as tc:
         yield tc
 
 
@@ -132,10 +132,6 @@ class TestChatCancel:
 
     def test_cancel_active_generation(self, client: TestClient) -> None:
         """模拟发起请求后取消：验证返回 cancelled 事件。"""
-        import threading
-
-        res_started = threading.Event()
-
         # 发起 SSE 请求（不等待完整响应）
         # 由于 TestClient 同步工作，我们发起请求后尽快取消
         # 验证 cancel 至少不会报错

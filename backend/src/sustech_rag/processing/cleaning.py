@@ -139,11 +139,11 @@ def _is_substantive_line(line: str) -> bool:
     """
     if len(line) < 8:
         return False
-    if re.search(
-        r"(电话|邮编|All Rights Reserved|Copyright|ICP备|二维码|扫码登录|再次扫码登录|取消此次登录|刷新页面|^刷新$|login)",
-        line,
-        re.IGNORECASE,
-    ):
+    boilerplate_pattern = (
+        r"电话|邮编|All Rights Reserved|Copyright|ICP备|二维码|扫码登录|再次扫码登录|"
+        r"取消此次登录|刷新页面|^刷新$|login"
+    )
+    if re.search(boilerplate_pattern, line, re.IGNORECASE):
         return False
     if len(line) >= 24:
         return True

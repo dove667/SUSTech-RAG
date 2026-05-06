@@ -40,7 +40,11 @@ class RagService:
             if role in ("user", "assistant") and content.strip():
                 messages.append({"role": role, "content": content.strip()})
         # Ensure the last message is the user query
-        if not messages or messages[-1].get("role") != "user" or messages[-1].get("content") != query:
+        if (
+            not messages
+            or messages[-1].get("role") != "user"
+            or messages[-1].get("content") != query
+        ):
             messages.append({"role": "user", "content": query})
         return messages
 

@@ -5,8 +5,8 @@ from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.vector_stores.chroma import ChromaVectorStore
 
 from sustech_rag.config.models import AppConfig
-from sustech_rag.utils.io import read_jsonl
 from sustech_rag.utils.chroma_client import persistent_client
+from sustech_rag.utils.io import read_jsonl
 from sustech_rag.utils.runtime import prepare_model_cache
 
 

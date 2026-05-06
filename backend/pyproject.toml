@@ -59,3 +59,6 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+filterwarnings = [
+  "ignore:Call to deprecated method get_doc_id.*:DeprecationWarning:llama_index\\.core\\.indices\\.base",
+]

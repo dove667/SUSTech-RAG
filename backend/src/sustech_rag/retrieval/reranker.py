@@ -29,7 +29,12 @@ class BGECrossEncoderReranker:
         self.model_name = model_name
         self.model = CrossEncoder(model_name, trust_remote_code=True)
 
-    def rerank(self, query: str, candidates: list[RetrievedChunk], top_n: int) -> list[RetrievedChunk]:
+    def rerank(
+        self,
+        query: str,
+        candidates: list[RetrievedChunk],
+        top_n: int,
+    ) -> list[RetrievedChunk]:
         """
         根据查询语义对候选片段进行重排序并截取前 N 条。
         输入参数：

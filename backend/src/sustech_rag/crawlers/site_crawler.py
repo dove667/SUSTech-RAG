@@ -13,7 +13,6 @@ from sustech_rag.config.models import CrawlConfig
 from sustech_rag.pipeline.schemas import RawDocument
 from sustech_rag.utils.io import ensure_dir
 
-
 TRACKING_QUERY_PREFIXES = ("utm_",)
 TRACKING_QUERY_KEYS = {"spm", "from", "source", "_t", "_refluxos"}
 SKIPPED_SCHEMES = ("mailto:", "javascript:", "tel:")

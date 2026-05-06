@@ -110,8 +110,8 @@ def serve(
     """
     from sustech_rag.api.app import run_dev_server
 
-    cfg = str(Path(config).expanduser().resolve()) if config else None
-    run_dev_server(host=host, port=port, config_path=cfg)
+    app_config = load_config(config)
+    run_dev_server(app_config, host=host, port=port)
 
 
 @app.command()

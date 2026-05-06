@@ -64,10 +64,10 @@ uv run sustech-rag query "南科大本科招生有什么特色？"
 uv run sustech-rag serve --host 127.0.0.1 --port 8000
 ```
 
-也可以用环境变量指定配置：
+也可以显式指定配置：
 
 ```bash
-SUSTECH_RAG_CONFIG=/absolute/path/to/config.yaml uvicorn sustech_rag.api.app:app
+uv run sustech-rag serve --host 127.0.0.1 --port 8000 --config /absolute/path/to/config.yaml
 ```
 
 主要接口：

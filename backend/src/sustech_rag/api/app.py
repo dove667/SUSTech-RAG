@@ -8,7 +8,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from sustech_rag.api.routes import http_error_handler, router
-from sustech_rag.config.loader import load_config
+from sustech_rag.config.models import AppConfig
 from sustech_rag.pipeline.rag_service import RagService
 
 
@@ -24,28 +24,20 @@ def _cors_origins() -> list[str]:
     return defaults
 
 
-def _initial_config_path() -> str | None:
-    raw = os.environ.get("SUSTECH_RAG_CONFIG", "").strip()
-    return raw or None
-
-
-def create_app(config_path: str | None = None) -> FastAPI:
-    """
-    Build FastAPI app. If ``config_path`` is None, uses env ``SUSTECH_RAG_CONFIG`` or default YAML.
-    """
+def create_app(config: AppConfig) -> FastAPI:
+    """Build FastAPI app from an already-loaded config."""
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        path = config_path if config_path is not None else _initial_config_path()
         print("[sustech-rag] loading config...", flush=True)
-        cfg = load_config(path)
-        app.state.app_config = cfg
+        app.state.app_config = config
         print(
-            "[sustech-rag] loading RAG (embedding + Chroma + reranker; first run may take minutes)...",
+            "[sustech-rag] loading RAG "
+            "(embedding + Chroma + reranker; first run may take minutes)...",
             flush=True,
         )
         try:
-            app.state.rag = RagService(cfg)
+            app.state.rag = RagService(config)
         except Exception as exc:
             msg = f"RAG service init failed: {exc}"
             print(f"[sustech-rag] FATAL: {msg}", flush=True)
@@ -80,11 +72,11 @@ def create_app(config_path: str | None = None) -> FastAPI:
     return app
 
 
-# Uvicorn default import target; set ``SUSTECH_RAG_CONFIG`` before load if needed.
-app = create_app()
-
-
-def run_dev_server(host: str = "0.0.0.0", port: int = 8000, config_path: str | None = None) -> None:
+def run_dev_server(
+    config: AppConfig,
+    host: str = "0.0.0.0",
+    port: int = 8000,
+) -> None:
     """Run with in-process app instance (used by CLI ``serve``)."""
     import uvicorn
 
@@ -93,8 +85,5 @@ def run_dev_server(host: str = "0.0.0.0", port: int = 8000, config_path: str | N
         "(HTTP logs appear after startup completes).\n",
         flush=True,
     )
-    cfg_path = config_path
-    if cfg_path is None:
-        cfg_path = _initial_config_path()
-    application = create_app(cfg_path)
+    application = create_app(config)
     uvicorn.run(application, host=host, port=port, log_level="info")

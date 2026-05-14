@@ -158,3 +158,18 @@ class TestHealth:
         res = client.get("/api/health")
         assert res.status_code == 200
         assert res.json()["status"] == "ready"
+
+
+class TestOpenAPI:
+    def test_openapi_contains_chinese_docs(self, client: TestClient) -> None:
+        res = client.get("/openapi.json")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["info"]["summary"] == "南方科技大学校园知识库问答后端接口"
+        assert data["paths"]["/api/identity"]["post"]["summary"] == "分配身份 ID"
+        assert (
+            "浏览器身份 ID"
+            in data["components"]["schemas"]["IdentityResponse"]["properties"]["identity_id"][
+                "description"
+            ]
+        )

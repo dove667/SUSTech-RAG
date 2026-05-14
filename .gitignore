@@ -39,3 +39,5 @@ dist/
 *.log
 tmp/
 temp/
+
+AGENTS.md

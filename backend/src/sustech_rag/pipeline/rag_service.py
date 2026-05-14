@@ -8,8 +8,10 @@ from sustech_rag.retrieval.engine import RetrievalEngine
 from sustech_rag.retrieval.reranker import RetrievedChunk
 
 _DEFAULT_SYSTEM_PROMPT = (
-    "你是校园知识库问答助手。请基于提供的检索上下文回答问题，"
-    "如果上下文不足，请明确说明。请给出简洁、准确的中文回答，并尽量引用信息来源标题。"
+    "你是南方科技大学的校园知识库问答助手。请基于提供的检索上下文回答问题，"
+    "如果上下文不足，请明确说明, 不要编造信息。"
+    "请给出简洁、准确的中文回答，并尽量引用信息来源标题。"
+    "如果用户询问与南方科技大学无关的问题，请礼貌拒绝回答。"
 )
 
 

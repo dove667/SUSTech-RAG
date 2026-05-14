@@ -5,6 +5,6 @@ from typing import Any
 
 
 def sse_frame(event: str, data: dict[str, Any]) -> str:
-    """One SSE message: event line + data line + blank line (RFC)."""
+    """构造一条 SSE 消息：事件行 + 数据行 + 空行。"""
     payload = json.dumps(data, ensure_ascii=False)
     return f"event: {event}\ndata: {payload}\n\n"

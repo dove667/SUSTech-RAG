@@ -6,12 +6,15 @@ import uuid
 from collections.abc import AsyncIterator, Iterator
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from sustech_rag.api.schemas import (
+    CancelResponse,
     ChatCancelRequest,
     ChatCompletionRequest,
+    ErrorResponse,
+    HealthResponse,
     IdentityResponse,
     KnowledgeBaseItem,
     KnowledgeBasesResponse,
@@ -20,7 +23,7 @@ from sustech_rag.api.sse import sse_frame
 from sustech_rag.pipeline.rag_service import RagService
 from sustech_rag.retrieval.reranker import RetrievedChunk
 
-router = APIRouter(tags=["chat"])
+router = APIRouter(tags=["对话接口"])
 
 # 取消令牌注册表：key = "{identity_id}:{message_id}" → threading.Event
 _cancel_tokens: dict[str, threading.Event] = {}
@@ -31,13 +34,19 @@ def get_rag(request: Request) -> RagService:
     if rag is None:
         raise HTTPException(
             status_code=503,
-            detail={"code": "server_error", "message": "RAG service not ready"},
+            detail=ErrorResponse(
+                code="server_error",
+                message="RAG service not ready",
+            ).model_dump(),
         )
     ready = getattr(request.app.state, "ready", False)
     if not ready:
         raise HTTPException(
             status_code=503,
-            detail={"code": "server_error", "message": "RAG components not ready"},
+            detail=ErrorResponse(
+                code="server_error",
+                message="RAG components not ready",
+            ).model_dump(),
         )
     return rag
 
@@ -117,20 +126,18 @@ def _sync_stream(
 
 
 async def _async_stream(sync_iter: Iterator[str]) -> AsyncIterator[str]:
-    """Wrap the synchronous SSE generator so next() runs in a thread executor.
+    """包装同步 SSE 生成器，让 `next()` 在线程执行器中运行。
 
-    Starlette wraps sync iterators in ``anyio.to_thread.run_sync``, which
-    pushes *every* yield through a thread-pool round-trip.  By providing an
-    async generator we let Starlette iterate us directly on the event loop.
+    Starlette 会把同步迭代器包装进 `anyio.to_thread.run_sync`，
+    使每次 `yield` 都经历一次线程池往返。这里显式提供异步生成器，
+    让 Starlette 直接在事件循环中迭代，减少额外调度开销。
     """
     loop = asyncio.get_running_loop()
     it = iter(sync_iter)
     _SENTINEL = object()
 
     def _next() -> str | object:
-        """Catch StopIteration inside the thread — Python 3.11+ asyncio
-        cannot raise StopIteration into a Future (it interacts badly
-        with generators)."""
+        """在线程内吞掉 StopIteration，避免它穿透到 Future。"""
         try:
             return next(it)
         except StopIteration:
@@ -144,55 +151,94 @@ async def _async_stream(sync_iter: Iterator[str]) -> AsyncIterator[str]:
 
 
 # ---------------------------------------------------------------------------
-# Routes
+# 路由定义
 # ---------------------------------------------------------------------------
 
 
-@router.get("/health")
+@router.get(
+    "/health",
+    summary="健康检查",
+    response_model=HealthResponse,
+    response_description="后端健康状态。",
+    responses={503: {"model": HealthResponse, "description": "服务未就绪或启动失败。"}},
+)
 def health(request: Request) -> JSONResponse:
+    """返回后端健康状态和组件就绪情况。"""
     rag = getattr(request.app.state, "rag", None)
     ready = getattr(request.app.state, "ready", False)
     startup_error = getattr(request.app.state, "startup_error", "")
     if rag is None:
         return JSONResponse(
-            status_code=503,
-            content={
-                "status": "error",
-                "message": startup_error or "RAG service init failed",
-                "components": {},
-            },
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content=HealthResponse(
+                status="error",
+                message=startup_error or "RAG service init failed",
+                components={},
+            ).model_dump(),
         )
     if not ready:
         return JSONResponse(
-            status_code=503,
-            content={
-                "status": "error",
-                "message": startup_error or "components not ready",
-                "components": {},
-            },
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content=HealthResponse(
+                status="error",
+                message=startup_error or "components not ready",
+                components={},
+            ).model_dump(),
         )
-    health = rag.health_check()
-    status_code = 200 if health["status"] == "ready" else 503
-    return JSONResponse(status_code=status_code, content=health)
+    health = HealthResponse.model_validate(rag.health_check())
+    status_code = (
+        status.HTTP_200_OK
+        if health.status == "ready"
+        else status.HTTP_503_SERVICE_UNAVAILABLE
+    )
+    return JSONResponse(status_code=status_code, content=health.model_dump(exclude_none=True))
 
 
-@router.post("/identity")
+@router.post(
+    "/identity",
+    summary="分配身份 ID",
+    response_model=IdentityResponse,
+    response_description="新分配的浏览器身份 ID。",
+)
 def assign_identity() -> IdentityResponse:
     """分配一个新的身份 ID。前端首次加载时调用，之后持久化复用。"""
     return IdentityResponse(identity_id=uuid.uuid4().hex)
 
 
-@router.post("/chat/completions")
+@router.post(
+    "/chat/completions",
+    summary="流式问答",
+    response_description="SSE 事件流，事件类型包括 start、reference、think.delta、think.end、content.delta、error、done。",
+    responses={
+        200: {
+            "description": "SSE 流式输出。",
+            "content": {
+                "text/event-stream": {
+                    "example": (
+                        "event: start\n"
+                        'data: {"conversation_id":"c_demo_001","message_id":"m_demo_001"}\n\n'
+                    )
+                }
+            },
+        },
+        400: {"model": ErrorResponse, "description": "请求参数不合法。"},
+        503: {"model": ErrorResponse, "description": "RAG 服务未就绪。"},
+    },
+)
 async def chat_completions(
     body: ChatCompletionRequest,
     request: Request,
     rag: Annotated[RagService, Depends(get_rag)],
     _identity: Annotated[str, Depends(get_identity_id)],
 ) -> Response:
+    """基于对话消息生成 SSE 流式回答。当前仅支持 `stream=true`。"""
     if not body.stream:
         return JSONResponse(
-            status_code=400,
-            content={"code": "bad_request", "message": "stream must be true"},
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content=ErrorResponse(
+                code="bad_request",
+                message="stream must be true",
+            ).model_dump(),
         )
 
     conversation_id = body.conversation_id or f"c_{uuid.uuid4().hex[:16]}"
@@ -212,33 +258,51 @@ async def chat_completions(
     )
 
 
-@router.post("/chat/cancel")
+@router.post(
+    "/chat/cancel",
+    summary="取消生成",
+    response_model=CancelResponse,
+    response_description="取消请求处理结果。",
+    responses={
+        404: {"model": ErrorResponse, "description": "未找到可取消的活跃生成任务。"},
+    },
+)
 def chat_cancel(
     body: ChatCancelRequest,
     request: Request,
     _identity: Annotated[str, Depends(get_identity_id)],
 ) -> JSONResponse:
+    """取消指定身份下正在进行的流式生成。"""
     identity_id = getattr(request.state, "identity_id", "")
     token_key = f"{identity_id}:{body.message_id}"
     event = _cancel_tokens.get(token_key)
     if event is None:
         return JSONResponse(
-            status_code=404,
-            content={"code": "not_found", "message": "no active generation to cancel"},
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=ErrorResponse(
+                code="not_found",
+                message="no active generation to cancel",
+            ).model_dump(),
         )
     event.set()
-    return JSONResponse(content={"code": "cancelled", "message": "ok"})
+    return JSONResponse(content=CancelResponse(code="cancelled", message="ok").model_dump())
 
 
-@router.get("/knowledge_bases")
+@router.get(
+    "/knowledge_bases",
+    summary="列出知识库",
+    response_model=KnowledgeBasesResponse,
+    response_description="当前可用知识库列表。",
+)
 def knowledge_bases(
     request: Request,
     _identity: Annotated[str, Depends(get_identity_id)],
 ) -> KnowledgeBasesResponse:
+    """返回当前服务暴露的知识库信息。"""
     cfg = getattr(request.app.state, "app_config", None)
     coll = cfg.vector_store.collection_name if cfg is not None else ""
     name = f"默认库（{coll}）" if coll else "默认库"
-    # query actual doc count from Chroma
+    # 从 Chroma 查询实际文档数；失败时降级为 0，避免影响接口可用性。
     try:
         from sustech_rag.utils.chroma_client import persistent_client
 

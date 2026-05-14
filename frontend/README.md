@@ -102,7 +102,7 @@ http://127.0.0.1:8000/api
 
 当前后端实际主要返回 `start`、`reference`、`think.delta`、`think.end`、`content.delta`、`error` 和 `done`。
 
-详细协议见 [docs/API.md](docs/API.md)。`public/API.md` 是给浏览器直接访问的同内容副本。
+详细协议见 [../docs/API.md](../docs/API.md)。`public/API.md` 是给浏览器直接访问的同内容副本。
 
 ## 常见问题
 

@@ -57,6 +57,6 @@ data/models/.cache/          HF_HOME / hub / transformers cache
 ## 当前边界
 
 - 只实现了本地 llama.cpp 后端。
-- API schema 已保留 `model`、`knowledge_base_ids` 和 `options`，但大部分运行参数仍由 YAML 配置控制。
+- API schema 已保留 `model` 和 `options`，但大部分运行参数仍由 YAML 配置控制。
 - API 鉴权应由反向代理或后续中间件补齐。
 - PDF 抓取/解析代码保留，但默认关闭。

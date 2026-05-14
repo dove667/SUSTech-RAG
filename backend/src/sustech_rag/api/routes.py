@@ -16,8 +16,6 @@ from sustech_rag.api.schemas import (
     ErrorResponse,
     HealthResponse,
     IdentityResponse,
-    KnowledgeBaseItem,
-    KnowledgeBasesResponse,
 )
 from sustech_rag.api.sse import sse_frame
 from sustech_rag.pipeline.rag_service import RagService
@@ -33,18 +31,18 @@ def get_rag(request: Request) -> RagService:
     rag = getattr(request.app.state, "rag", None)
     if rag is None:
         raise HTTPException(
-            status_code=503,
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=ErrorResponse(
-                code="server_error",
+                code="service_unavailable",
                 message="RAG service not ready",
             ).model_dump(),
         )
     ready = getattr(request.app.state, "ready", False)
     if not ready:
         raise HTTPException(
-            status_code=503,
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=ErrorResponse(
-                code="server_error",
+                code="service_unavailable",
                 message="RAG components not ready",
             ).model_dump(),
         )
@@ -162,36 +160,29 @@ async def _async_stream(sync_iter: Iterator[str]) -> AsyncIterator[str]:
     response_description="后端健康状态。",
     responses={503: {"model": HealthResponse, "description": "服务未就绪或启动失败。"}},
 )
-def health(request: Request) -> JSONResponse:
+def health(request: Request, response: Response) -> HealthResponse:
     """返回后端健康状态和组件就绪情况。"""
     rag = getattr(request.app.state, "rag", None)
     ready = getattr(request.app.state, "ready", False)
     startup_error = getattr(request.app.state, "startup_error", "")
     if rag is None:
-        return JSONResponse(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            content=HealthResponse(
-                status="error",
-                message=startup_error or "RAG service init failed",
-                components={},
-            ).model_dump(),
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        return HealthResponse(
+            status="error",
+            message=startup_error or "RAG service init failed",
+            components={},
         )
     if not ready:
-        return JSONResponse(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            content=HealthResponse(
-                status="error",
-                message=startup_error or "components not ready",
-                components={},
-            ).model_dump(),
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        return HealthResponse(
+            status="error",
+            message=startup_error or "components not ready",
+            components={},
         )
     health = HealthResponse.model_validate(rag.health_check())
-    status_code = (
-        status.HTTP_200_OK
-        if health.status == "ready"
-        else status.HTTP_503_SERVICE_UNAVAILABLE
-    )
-    return JSONResponse(status_code=status_code, content=health.model_dump(exclude_none=True))
+    if health.status != "ready":
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    return health
 
 
 @router.post(
@@ -228,17 +219,16 @@ def assign_identity() -> IdentityResponse:
 async def chat_completions(
     body: ChatCompletionRequest,
     request: Request,
+    response: Response,
     rag: Annotated[RagService, Depends(get_rag)],
     _identity: Annotated[str, Depends(get_identity_id)],
 ) -> Response:
     """基于对话消息生成 SSE 流式回答。当前仅支持 `stream=true`。"""
     if not body.stream:
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content=ErrorResponse(
-                code="bad_request",
-                message="stream must be true",
-            ).model_dump(),
+        response.status_code = status.HTTP_400_BAD_REQUEST
+        return ErrorResponse(
+            code="bad_request",
+            message="stream must be true",
         )
 
     conversation_id = body.conversation_id or f"c_{uuid.uuid4().hex[:16]}"
@@ -261,7 +251,7 @@ async def chat_completions(
 @router.post(
     "/chat/cancel",
     summary="取消生成",
-    response_model=CancelResponse,
+    response_model=CancelResponse | ErrorResponse,
     response_description="取消请求处理结果。",
     responses={
         404: {"model": ErrorResponse, "description": "未找到可取消的活跃生成任务。"},
@@ -271,60 +261,28 @@ def chat_cancel(
     body: ChatCancelRequest,
     request: Request,
     _identity: Annotated[str, Depends(get_identity_id)],
-) -> JSONResponse:
+    response: Response,
+) -> CancelResponse | ErrorResponse:
     """取消指定身份下正在进行的流式生成。"""
     identity_id = getattr(request.state, "identity_id", "")
     token_key = f"{identity_id}:{body.message_id}"
     event = _cancel_tokens.get(token_key)
     if event is None:
-        return JSONResponse(
-            status_code=status.HTTP_404_NOT_FOUND,
-            content=ErrorResponse(
-                code="not_found",
-                message="no active generation to cancel",
-            ).model_dump(),
+        response.status_code = status.HTTP_404_NOT_FOUND
+        return ErrorResponse(
+            code="not_found",
+            message="no active generation to cancel",
         )
     event.set()
-    return JSONResponse(content=CancelResponse(code="cancelled", message="ok").model_dump())
+    return CancelResponse(code="cancelled", message="ok")
 
 
-@router.get(
-    "/knowledge_bases",
-    summary="列出知识库",
-    response_model=KnowledgeBasesResponse,
-    response_description="当前可用知识库列表。",
-)
-def knowledge_bases(
-    request: Request,
-    _identity: Annotated[str, Depends(get_identity_id)],
-) -> KnowledgeBasesResponse:
-    """返回当前服务暴露的知识库信息。"""
-    cfg = getattr(request.app.state, "app_config", None)
-    coll = cfg.vector_store.collection_name if cfg is not None else ""
-    name = f"默认库（{coll}）" if coll else "默认库"
-    # 从 Chroma 查询实际文档数；失败时降级为 0，避免影响接口可用性。
-    try:
-        from sustech_rag.utils.chroma_client import persistent_client
-
-        client = persistent_client(str(cfg.vector_store.persist_dir))
-        collection = client.get_collection(coll)
-        count = collection.count()
-    except Exception:
-        count = 0
-    item = KnowledgeBaseItem(id="kb_default", name=name, doc_count=count)
-    return KnowledgeBasesResponse(items=[item])
-
-
-def http_error_handler(_: Request, exc: HTTPException) -> JSONResponse:
-    detail = exc.detail
-    if isinstance(detail, dict) and "code" in detail:
-        return JSONResponse(status_code=exc.status_code, content=detail)
-    if isinstance(detail, dict):
-        return JSONResponse(
-            status_code=exc.status_code,
-            content={"code": "bad_request", "message": detail.get("message", str(detail))},
-        )
+def internal_error_handler(_: Request, exc: Exception) -> JSONResponse:
+    print(f"[sustech-rag] unhandled exception: {exc}", flush=True)
     return JSONResponse(
-        status_code=exc.status_code,
-        content={"code": "bad_request", "message": str(detail)},
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content=ErrorResponse(
+            code="internal_server_error",
+            message="internal server error",
+        ).model_dump(),
     )

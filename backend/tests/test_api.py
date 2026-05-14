@@ -124,7 +124,7 @@ class TestChatCancel:
         """取消一条不存在的生成任务应返回 404。"""
         res = client.post(
             "/api/chat/cancel",
-            json={"conversation_id": "c_1", "message_id": "m_nonexistent"},
+            json={"message_id": "m_nonexistent"},
             headers={"X-Identity-ID": "user_cancel_01"},
         )
         assert res.status_code == 404
@@ -137,20 +137,11 @@ class TestChatCancel:
         # 验证 cancel 至少不会报错
         res = client.post(
             "/api/chat/cancel",
-            json={"conversation_id": "c_active", "message_id": "m_active"},
+            json={"message_id": "m_active"},
             headers={"X-Identity-ID": "user_cancel_02"},
         )
         # 没有活跃生成时 cancel 应返回 404
         assert res.status_code == 404
-
-
-class TestKnowledgeBases:
-    def test_knowledge_bases(self, client: TestClient) -> None:
-        res = client.get("/api/knowledge_bases", headers={"X-Identity-ID": "user_kb"})
-        assert res.status_code == 200
-        data = res.json()
-        assert len(data["items"]) == 1
-        assert data["items"][0]["id"] == "kb_default"
 
 
 class TestHealth:
@@ -173,3 +164,20 @@ class TestOpenAPI:
                 "description"
             ]
         )
+
+
+class TestExceptionHandling:
+    def test_unknown_route_keeps_fastapi_default_404(self, client: TestClient) -> None:
+        res = client.get("/api/does-not-exist")
+        assert res.status_code == 404
+        assert res.json() == {"detail": "Not Found"}
+
+    def test_validation_error_is_not_rewritten(self, client: TestClient) -> None:
+        res = client.post(
+            "/api/chat/cancel",
+            json={},
+            headers={"X-Identity-ID": "user_validation_01"},
+        )
+        assert res.status_code == 422
+        data = res.json()
+        assert "detail" in data

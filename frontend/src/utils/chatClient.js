@@ -3,7 +3,7 @@ import { parseSSE } from './sse.js';
 /**
  * Streaming chat client.  Consumers call `chat({...}, handlers)` where
  * `handlers` receives granular callbacks for every SSE event documented
- * in docs/API.md.
+ * in /API.md and the repo-root docs/API.md.
  *
  * Returns a `cancel()` function.
  */
@@ -18,7 +18,6 @@ export function chat({ settings, messages, conversationId, signal }, handlers) {
       conversation_id: conversationId,
       messages,
       model: settings.model || undefined,
-      knowledge_base_ids: settings.knowledgeBaseIds?.length ? settings.knowledgeBaseIds : undefined,
       stream: true,
       options: {
         temperature: settings.temperature,

@@ -1,4 +1,4 @@
-# RAG WebUI API
+# SUSTech Campus RAG API
 
 Base URL 由前端设置页的 `apiBaseUrl` 决定，默认是 `/api`。当前后端路由统一挂在 `/api` 前缀下。
 
@@ -40,7 +40,6 @@ X-Identity-ID: <identity_id>
   "messages": [
     { "role": "user", "content": "南科大有哪些学院？" }
   ],
-  "knowledge_base_ids": ["kb_default"],
   "model": "default",
   "stream": true,
   "options": {
@@ -54,8 +53,9 @@ X-Identity-ID: <identity_id>
 
 说明：
 
-- `messages` 必填，后端会使用最后一条非空 user 消息作为检索 query。
-- `knowledge_base_ids`、`model` 和 `options` 当前主要为前端设置和未来扩展保留；后端实际检索/生成参数主要来自 YAML 配置。
+- `messages` 必填，后端会使用最后一条非空 `user` 消息作为检索 query。
+- `conversation_id` 可选；为空时由服务端自动分配，并在 `start` 事件中返回。
+- `model` 和 `options` 当前主要为前端设置和未来扩展保留；后端实际检索/生成参数主要来自 YAML 配置。
 - `stream: false` 会返回 `400 bad_request`。
 
 SSE 帧格式：
@@ -86,7 +86,6 @@ data: {"text":"..."}
 
 ```json
 {
-  "conversation_id": "c_xxx",
   "message_id": "m_xxx"
 }
 ```
@@ -105,18 +104,6 @@ data: {"text":"..."}
 
 注意：`message_id` 应使用 `start` 事件里后端返回的 ID。
 
-## GET /knowledge_bases
-
-返回当前默认知识库信息。
-
-```json
-{
-  "items": [
-    { "id": "kb_default", "name": "默认库（sustech-campus-kb）", "doc_count": 128 }
-  ]
-}
-```
-
 ## GET /health
 
 返回后端组件状态。
@@ -133,14 +120,49 @@ data: {"text":"..."}
 }
 ```
 
-未就绪或启动失败会返回 503。
+未就绪或启动失败会返回 503，例如：
+
+```json
+{
+  "status": "error",
+  "message": "components not ready",
+  "components": {}
+}
+```
 
 ## 错误格式
 
-普通 HTTP 错误：
+当前后端显式返回的普通 HTTP 错误通常为：
 
 ```json
 { "code": "bad_request", "message": "..." }
+```
+
+也可能返回：
+
+```json
+{ "code": "service_unavailable", "message": "..." }
+```
+
+未捕获的服务端异常会统一返回：
+
+```json
+{ "code": "internal_server_error", "message": "internal server error" }
+```
+
+请求体验证错误（例如缺少必填字段）保持 FastAPI 默认 422 格式：
+
+```json
+{
+  "detail": [
+    {
+      "type": "...",
+      "loc": ["body", "..."],
+      "msg": "...",
+      "input": {}
+    }
+  ]
+}
 ```
 
 流式过程中错误会通过 SSE `event: error` 返回，后续通常还会发送 `done`。

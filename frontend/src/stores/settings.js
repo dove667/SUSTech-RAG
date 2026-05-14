@@ -11,7 +11,6 @@ const DEFAULTS = () => ({
   apiBaseUrl: '/api',
   identityId: '',
   model: 'default',
-  knowledgeBaseIds: [],
   temperature: 0.3,
   topK: 5,
   enableThink: true,

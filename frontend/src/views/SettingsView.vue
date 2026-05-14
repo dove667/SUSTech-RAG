@@ -227,7 +227,7 @@ async function importConfig(e) {
         <h2>接口设置</h2>
         <p class="muted">
           详见
-          <a href="/API.md" target="_blank">/docs/API.md</a>
+          <a href="/API.md" target="_blank">/API.md</a>
           接口规范。
         </p>
         <div class="row">
@@ -237,15 +237,6 @@ async function importConfig(e) {
         <div class="row">
           <label>Model</label>
           <input type="text" :value="s.model" @change="e => update({ model: e.target.value })" />
-        </div>
-        <div class="row">
-          <label>Knowledge Base IDs（逗号分隔）</label>
-          <input
-            type="text"
-            :value="s.knowledgeBaseIds.join(',')"
-            @change="e => update({ knowledgeBaseIds: e.target.value.split(',').map(v => v.trim()).filter(Boolean) })"
-            placeholder="kb_default"
-          />
         </div>
         <div class="row">
           <label>Temperature: {{ s.temperature }}</label>
@@ -298,7 +289,7 @@ async function importConfig(e) {
           <li>SSE 流式传输，支持 think / 内容 / 图片 / 代码 / 工具 等多种块</li>
           <li>自动识别多种 LaTeX 定界符 (<code>$...$</code>, <code>$$...$$</code>, <code>\(...\)</code>, <code>\[...\]</code>, <code>\begin...\end</code>)</li>
         </ul>
-        <p class="muted">接口规范：<a href="/API.md" target="_blank">docs/API.md</a></p>
+        <p class="muted">接口规范：<a href="/API.md" target="_blank">/API.md</a></p>
       </section>
     </main>
   </div>

@@ -76,9 +76,8 @@ uv run sustech-rag serve --host 127.0.0.1 --port 8000 --config /absolute/path/to
 - `POST /api/identity`
 - `POST /api/chat/completions`
 - `POST /api/chat/cancel`
-- `GET /api/knowledge_bases`
 
-详细协议见 [../frontend/docs/API.md](../frontend/docs/API.md)。
+详细协议见 [../docs/API.md](../docs/API.md)。
 
 ## 配置
 
@@ -154,7 +153,7 @@ uv run ruff check .
 
 ## 更多文档
 
-- [docs/project-guide.md](docs/project-guide.md)
-- [docs/architecture.md](docs/architecture.md)
-- [docs/runbook.md](docs/runbook.md)
+- [../docs/project-guide.md](../docs/project-guide.md)
+- [../docs/architecture.md](../docs/architecture.md)
+- [../docs/runbook.md](../docs/runbook.md)
 - [CONTRIBUTING.md](CONTRIBUTING.md)

@@ -46,11 +46,6 @@ class ChatCompletionRequest(BaseModel):
         examples=["c_demo_001"],
     )
     messages: list[ChatMessage] = Field(description="按顺序排列的会话消息列表。")
-    knowledge_base_ids: list[str] | None = Field(
-        default=None,
-        description="知识库 ID 列表。当前默认仅支持默认知识库，保留该字段用于前端兼容和扩展。",
-        examples=[["kb_default"]],
-    )
     model: str | None = Field(
         default=None,
         description="模型标识。当前后端主要读取配置文件中的模型设置。",
@@ -67,25 +62,10 @@ class ChatCompletionRequest(BaseModel):
 class ChatCancelRequest(BaseModel):
     """取消生成请求体。"""
 
-    conversation_id: str = Field(description="会话 ID。用于和前端状态对齐。", examples=["c_demo_001"])
     message_id: str = Field(
         description="待取消的消息 ID，应使用 SSE start 事件中返回的 message_id。",
         examples=["m_demo_001"],
     )
-
-
-class KnowledgeBaseItem(BaseModel):
-    """知识库条目。"""
-
-    id: str = Field(description="知识库 ID。", examples=["kb_default"])
-    name: str = Field(description="知识库显示名称。", examples=["默认库（sustech-campus-kb）"])
-    doc_count: int = Field(default=0, description="知识库文档数。", examples=[128])
-
-
-class KnowledgeBasesResponse(BaseModel):
-    """知识库列表响应。"""
-
-    items: list[KnowledgeBaseItem] = Field(default_factory=list, description="知识库列表。")
 
 
 class IdentityResponse(BaseModel):

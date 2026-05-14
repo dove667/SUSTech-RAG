@@ -236,7 +236,7 @@ export const useChat = defineStore('chat', {
             'Content-Type': 'application/json',
             ...(settings.identityId ? { 'X-Identity-ID': settings.identityId } : {}),
           },
-          body: JSON.stringify({ conversation_id: this.activeId, message_id: messageId }),
+          body: JSON.stringify({ message_id: messageId }),
         }).catch(() => {});
       }
       this.persist();

@@ -4,10 +4,10 @@ import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from sustech_rag.api.routes import http_error_handler, router
+from sustech_rag.api.routes import internal_error_handler, router
 from sustech_rag.config.models import AppConfig
 from sustech_rag.pipeline.rag_service import RagService
 
@@ -75,7 +75,7 @@ def create_app(config: AppConfig) -> FastAPI:
         ],
         lifespan=lifespan,
     )
-    app.add_exception_handler(HTTPException, http_error_handler)
+    app.add_exception_handler(Exception, internal_error_handler)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=_cors_origins(),

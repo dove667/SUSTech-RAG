@@ -62,9 +62,9 @@ uv run sustech-rag index --rebuild
 ```text
 backend/configs/default.yaml       后端默认配置
 backend/src/sustech_rag/           后端 Python 包
-backend/docs/                      后端架构、运行和维护文档
+docs/                              API、架构、运行和维护文档
 frontend/src/                      前端 Vue 应用
-frontend/docs/API.md               当前前后端接口说明
+docs/API.md                        当前前后端接口说明
 backend/data/                      后端数据、模型、索引目录，不提交 Git
 entrypoint.sh                      前端启动脚本，只负责进入 frontend 并运行 Vite
 ```
@@ -87,10 +87,10 @@ backend/data/models/llm/qwen/Qwen3-8B-Q4_K_M.gguf
 
 - [后端 README](backend/README.md)
 - [前端 README](frontend/README.md)
-- [后端架构](backend/docs/architecture.md)
-- [运行手册](backend/docs/runbook.md)
-- [项目导览](backend/docs/project-guide.md)
-- [前后端 API](frontend/docs/API.md)
+- [后端架构](docs/architecture.md)
+- [运行手册](docs/runbook.md)
+- [项目导览](docs/project-guide.md)
+- [前后端 API](docs/API.md)
 
 ## 当前注意事项
 

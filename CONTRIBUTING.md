@@ -9,8 +9,8 @@
 1. [README.md](README.md)
 2. [backend/README.md](backend/README.md)
 3. [frontend/README.md](frontend/README.md)
-4. [backend/docs/project-guide.md](backend/docs/project-guide.md)
-5. [backend/docs/runbook.md](backend/docs/runbook.md)
+4. [docs/project-guide.md](docs/project-guide.md)
+5. [docs/runbook.md](docs/runbook.md)
 
 ## 本地开发
 

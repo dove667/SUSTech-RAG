@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-import asyncio
-import threading
 import uuid
-from collections.abc import AsyncIterator, Iterator
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi.responses import StreamingResponse
 
+from sustech_rag.api.chat_stream import async_chat_stream, cancel_generation, sync_chat_stream
+from sustech_rag.api.dependencies import get_identity_id, get_rag
 from sustech_rag.api.schemas import (
     CancelResponse,
     ChatCancelRequest,
@@ -17,140 +16,9 @@ from sustech_rag.api.schemas import (
     HealthResponse,
     IdentityResponse,
 )
-from sustech_rag.api.sse import sse_frame
 from sustech_rag.pipeline.rag_service import RagService
-from sustech_rag.retrieval.reranker import RetrievedChunk
 
 router = APIRouter(tags=["对话接口"])
-
-# 取消令牌注册表：key = "{identity_id}:{message_id}" → threading.Event
-_cancel_tokens: dict[str, threading.Event] = {}
-
-
-def get_rag(request: Request) -> RagService:
-    rag = getattr(request.app.state, "rag", None)
-    if rag is None:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=ErrorResponse(
-                code="service_unavailable",
-                message="RAG service not ready",
-            ).model_dump(),
-        )
-    ready = getattr(request.app.state, "ready", False)
-    if not ready:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=ErrorResponse(
-                code="service_unavailable",
-                message="RAG components not ready",
-            ).model_dump(),
-        )
-    return rag
-
-
-def get_identity_id(request: Request) -> str:
-    """从 X-Identity-ID 请求头提取身份 ID，写入 request.state。缺省返回空字符串。"""
-    identity_id = request.headers.get("X-Identity-ID", "").strip()
-    request.state.identity_id = identity_id
-    return identity_id
-
-
-def _chunks_to_reference_items(chunks: list[RetrievedChunk], snippet_max: int = 400) -> list[dict]:
-    items: list[dict] = []
-    for ch in chunks:
-        title = str(ch.metadata.get("title") or "Untitled")
-        url = str(ch.metadata.get("source_url") or "")
-        snippet = ch.text[:snippet_max] if len(ch.text) > snippet_max else ch.text
-        items.append(
-            {
-                "title": title,
-                "url": url,
-                "snippet": snippet,
-                "score": float(ch.score),
-            }
-        )
-    return items
-
-
-def _sync_stream(
-    messages: list,
-    rag: RagService,
-    conversation_id: str,
-    message_id: str,
-    identity_id: str,
-) -> Iterator[str]:
-    """同步 SSE 生成器：直接在迭代循环中检查取消令牌，无需 async/线程/队列。"""
-    yield sse_frame("start", {"conversation_id": conversation_id, "message_id": message_id})
-
-    token_key = f"{identity_id}:{message_id}"
-    cancel_event = threading.Event()
-    _cancel_tokens[token_key] = cancel_event
-
-    api_messages = [{"role": m.role, "content": m.content} for m in messages]
-
-    try:
-        for event_type, data in rag.answer_stream(api_messages):
-            if cancel_event.is_set():
-                yield sse_frame("error", {"code": "cancelled", "message": "generation cancelled"})
-                yield sse_frame(
-                    "done",
-                    {
-                        "finish_reason": "cancelled",
-                        "usage": {"prompt_tokens": 0, "completion_tokens": 0},
-                    },
-                )
-                return
-            if event_type == "reference":
-                yield sse_frame("reference", {"items": _chunks_to_reference_items(data)})
-            elif event_type == "think.delta":
-                yield sse_frame("think.delta", {"text": data})
-            elif event_type == "think.end":
-                yield sse_frame("think.end", {})
-            elif event_type == "content.delta":
-                yield sse_frame("content.delta", {"text": data})
-        yield sse_frame(
-            "done",
-            {"finish_reason": "stop", "usage": {"prompt_tokens": 0, "completion_tokens": 0}},
-        )
-    except Exception as exc:
-        yield sse_frame("error", {"code": "server_error", "message": str(exc)})
-        yield sse_frame(
-            "done",
-            {"finish_reason": "error", "usage": {"prompt_tokens": 0, "completion_tokens": 0}},
-        )
-    finally:
-        _cancel_tokens.pop(token_key, None)
-
-
-async def _async_stream(sync_iter: Iterator[str]) -> AsyncIterator[str]:
-    """包装同步 SSE 生成器，让 `next()` 在线程执行器中运行。
-
-    Starlette 会把同步迭代器包装进 `anyio.to_thread.run_sync`，
-    使每次 `yield` 都经历一次线程池往返。这里显式提供异步生成器，
-    让 Starlette 直接在事件循环中迭代，减少额外调度开销。
-    """
-    loop = asyncio.get_running_loop()
-    it = iter(sync_iter)
-    _SENTINEL = object()
-
-    def _next() -> str | object:
-        """在线程内吞掉 StopIteration，避免它穿透到 Future。"""
-        try:
-            return next(it)
-        except StopIteration:
-            return _SENTINEL
-
-    while True:
-        item = await loop.run_in_executor(None, _next)
-        if item is _SENTINEL:
-            break
-        yield item
-
-
-# ---------------------------------------------------------------------------
-# 路由定义
-# ---------------------------------------------------------------------------
 
 
 @router.get(
@@ -199,7 +67,10 @@ def assign_identity() -> IdentityResponse:
 @router.post(
     "/chat/completions",
     summary="流式问答",
-    response_description="SSE 事件流，事件类型包括 start、reference、think.delta、think.end、content.delta、error、done。",
+    response_description=(
+        "SSE 事件流，事件类型包括 start、reference、think.delta、"
+        "think.end、content.delta、error、done。"
+    ),
     responses={
         200: {
             "description": "SSE 流式输出。",
@@ -236,8 +107,8 @@ async def chat_completions(
     identity_id = getattr(request.state, "identity_id", "")
 
     return StreamingResponse(
-        _async_stream(
-            _sync_stream(body.messages, rag, conversation_id, message_id, identity_id)
+        async_chat_stream(
+            sync_chat_stream(body.messages, rag, conversation_id, message_id, identity_id)
         ),
         media_type="text/event-stream",
         headers={
@@ -265,24 +136,10 @@ def chat_cancel(
 ) -> CancelResponse | ErrorResponse:
     """取消指定身份下正在进行的流式生成。"""
     identity_id = getattr(request.state, "identity_id", "")
-    token_key = f"{identity_id}:{body.message_id}"
-    event = _cancel_tokens.get(token_key)
-    if event is None:
+    if not cancel_generation(identity_id, body.message_id):
         response.status_code = status.HTTP_404_NOT_FOUND
         return ErrorResponse(
             code="not_found",
             message="no active generation to cancel",
         )
-    event.set()
     return CancelResponse(code="cancelled", message="ok")
-
-
-def internal_error_handler(_: Request, exc: Exception) -> JSONResponse:
-    print(f"[sustech-rag] unhandled exception: {exc}", flush=True)
-    return JSONResponse(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content=ErrorResponse(
-            code="internal_server_error",
-            message="internal server error",
-        ).model_dump(),
-    )

@@ -66,7 +66,8 @@ class RagService:
         return self.llm.generate(prompt)
 
     def answer_stream(self, messages: list[dict]) -> Iterator[tuple[str, object]]:
-        """Retrieve and stream. Yields (event_type, data):
+        """
+        Retrieve and stream. Yields (event_type, data):
         - ("reference", list[RetrievedChunk])
         - ("think.delta", str)
         - ("think.end", None)

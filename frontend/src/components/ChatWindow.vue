@@ -1,10 +1,11 @@
 <script setup>
 import { nextTick, ref, watch } from 'vue';
 import MessageBubble from './MessageBubble.vue';
+import LogoIcon from '@/components/LogoIcon.vue';
 
 const props = defineProps({
   messages: { type: Array, default: () => [] },
-  emptyTitle: { type: String, default: 'RAG 知识问答' },
+  emptyTitle: { type: String, default: '南科知识问答' },
   emptyHint:  { type: String, default: '你可以用自然语言提问，我会结合知识库回答。' },
   suggestions: {
     type: Array,
@@ -54,7 +55,9 @@ watch(() => props.messages.length, () => scrollToBottom(true));
       <template v-if="messages.length === 0">
         <div class="empty">
           <div class="hero">
-            <div class="logo">✨</div>
+            <div class="logo">
+              <LogoIcon :size="96" />
+            </div>
             <h1>{{ emptyTitle }}</h1>
             <p>{{ emptyHint }}</p>
           </div>
@@ -101,13 +104,9 @@ watch(() => props.messages.length, () => scrollToBottom(true));
 }
 .hero { text-align: center; color: var(--text-muted); }
 .hero .logo {
-  width: 64px; height: 64px;
+  width: 120px; height: 120px;
   margin: 0 auto 12px;
-  display: grid; place-items: center;
-  border-radius: var(--radius-lg);
-  font-size: 32px;
-  background: var(--primary-soft);
-  color: var(--primary);
+  display: flex; align-items: center; justify-content: center;
 }
 .hero h1 { margin: 0 0 6px; color: var(--text); font-size: 24px; font-weight: 700; }
 .hero p { margin: 0; font-size: 14px; }

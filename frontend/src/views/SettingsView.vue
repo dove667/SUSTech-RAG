@@ -4,6 +4,7 @@ import { RouterLink } from 'vue-router';
 import { useSettings } from '@/stores/settings.js';
 import { PRESETS, getPresetVars } from '@/styles/themes.js';
 import { showConfirm } from '@/utils/confirm.js';
+import LogoIcon from '@/components/LogoIcon.vue';
 
 const s = useSettings();
 
@@ -124,8 +125,8 @@ async function importConfig(e) {
     <aside class="side">
       <div class="brand">
         <RouterLink to="/" class="logo-link">
-          <span class="logo">✨</span>
-          <span class="name">RAG 知识问答</span>
+          <LogoIcon :size="34" />
+          <span class="name">南科知识问答</span>
         </RouterLink>
       </div>
       <nav class="tabs">
@@ -317,12 +318,7 @@ async function importConfig(e) {
 .brand .logo-link {
   display: flex; align-items: center; gap: 10px;
   font-weight: 700; color: var(--text); text-decoration: none;
-  padding: 2px 6px 6px;
-}
-.brand .logo {
-  width: 28px; height: 28px; border-radius: 8px;
-  background: var(--primary-soft); color: var(--primary);
-  display: grid; place-items: center; font-size: 14px;
+  padding: 4px 6px 8px;
 }
 
 .tabs { display: flex; flex-direction: column; gap: 2px; }

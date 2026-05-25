@@ -4,6 +4,7 @@ import { RouterLink } from 'vue-router';
 import { useChat } from '@/stores/chat.js';
 import ChatWindow from '@/components/ChatWindow.vue';
 import ChatInput from '@/components/ChatInput.vue';
+import LogoIcon from '@/components/LogoIcon.vue';
 
 /**
  * Floating spirit ball — can be used as a standalone page *or* dropped into
@@ -81,7 +82,7 @@ function pick(t) { chat.send(t); }
   <div class="ball-stage">
     <div class="stage-bg">
       <div class="info">
-        <h1>🧚 悬浮精灵球</h1>
+        <h1>南科 AI 悬浮球</h1>
         <p>把鼠标移到右下角 → 点击蓝色小球 → 拖动可换位。</p>
         <p class="muted">
           本视图可直接嵌入到任何页面（通过 <code>&lt;iframe src="/ball"&gt;</code>
@@ -106,7 +107,8 @@ function pick(t) { chat.send(t); }
       @touchstart="onDown"
       aria-label="打开 AI 助手"
     >
-      <span class="emoji">{{ open ? '✕' : '✨' }}</span>
+      <span class="emoji">{{ open ? '✕' : '' }}</span>
+      <LogoIcon v-if="!open" :size="30" color="var(--text-on-primary)" class="ball-logo" />
       <span class="pulse" />
     </button>
 
@@ -114,7 +116,7 @@ function pick(t) { chat.send(t); }
     <transition name="panel">
       <section v-if="open" class="panel" @mousedown.stop @touchstart.stop>
         <header class="panel-head">
-          <strong>AI 助手</strong>
+          <strong>南科 AI 助手</strong>
           <div class="spacer" />
           <button class="icon-btn" @click="chat.newConversation" title="新会话">＋</button>
           <RouterLink class="icon-btn" to="/settings" title="设置">⚙</RouterLink>
@@ -186,6 +188,10 @@ function pick(t) { chat.send(t); }
 .ball.active { transform: scale(0.95); }
 .ball.dragging { cursor: grabbing; transition: none; }
 .ball .emoji { font-size: 24px; line-height: 1; }
+.ball .ball-logo {
+  position: absolute;
+  pointer-events: none;
+}
 .ball .pulse {
   position: absolute; inset: 0;
   border-radius: 50%;

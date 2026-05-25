@@ -31,13 +31,13 @@ async function del(id) {
   <div class="mobile">
     <header class="topbar">
       <button class="icon-btn" @click="drawer = true" aria-label="菜单">☰</button>
-      <div class="title">{{ active?.title || 'RAG 问答' }}</div>
+      <div class="title">{{ active?.title || '南科问答' }}</div>
       <RouterLink class="icon-btn" to="/settings" aria-label="设置">⚙</RouterLink>
     </header>
 
     <ChatWindow
       :messages="active?.messages ?? []"
-      empty-title="你好 👋"
+      empty-title="南科问答"
       empty-hint="向知识库提问，我会结合检索结果回答。"
       @pick-suggestion="pick"
     />

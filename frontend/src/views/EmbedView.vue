@@ -55,8 +55,8 @@ function pick(t) { send(t); }
     <ChatWindow
       class="w"
       :messages="active?.messages ?? []"
-      empty-title="嵌入式问答"
-      empty-hint="欢迎提问 ✨"
+      empty-title="南科知识问答"
+      empty-hint="欢迎提问"
       @pick-suggestion="pick"
     />
     <div class="in">

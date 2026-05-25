@@ -39,12 +39,14 @@ def chunks_to_reference_items(
         title = str(chunk.metadata.get("title") or "Untitled")
         url = str(chunk.metadata.get("source_url") or "")
         snippet = chunk.text[:snippet_max] if len(chunk.text) > snippet_max else chunk.text
+        source = str(chunk.metadata.get("source") or "")
         items.append(
             {
                 "title": title,
                 "url": url,
                 "snippet": snippet,
                 "score": float(chunk.score),
+                "source": source,
             }
         )
     return items

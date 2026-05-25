@@ -6,6 +6,7 @@ import { useSettings } from '@/stores/settings.js';
 import { showConfirm } from '@/utils/confirm.js';
 import ChatWindow from '@/components/ChatWindow.vue';
 import ChatInput from '@/components/ChatInput.vue';
+import LogoIcon from '@/components/LogoIcon.vue';
 
 const chat = useChat();
 const settings = useSettings();
@@ -70,8 +71,8 @@ function timeOf(c) {
   <div class="desktop">
     <aside class="sidebar">
       <div class="brand">
-        <span class="logo">✨</span>
-        <span class="name">RAG 知识问答</span>
+        <LogoIcon :size="45" />
+        <span class="name">南科知识问答</span>
       </div>
 
       <button class="btn primary new" @click="newChat">
@@ -110,7 +111,7 @@ function timeOf(c) {
 
     <main class="main">
       <header class="topbar">
-        <div class="title">{{ active?.title || 'RAG 知识问答' }}</div>
+        <div class="title">{{ active?.title || '南科知识问答' }}</div>
         <div class="spacer" />
         <button class="icon-btn" @click="chat.regenerate" title="重新生成" :disabled="chat.streaming">↻</button>
       </header>
@@ -153,16 +154,8 @@ function timeOf(c) {
 }
 .brand {
   display: flex; align-items: center; gap: 10px;
-  padding: 2px 6px 8px;
+  padding: 4px 6px 10px;
   font-weight: 700;
-  font-size: 16px;
-}
-.brand .logo {
-  width: 30px; height: 30px;
-  display: grid; place-items: center;
-  border-radius: 8px;
-  background: var(--primary-soft);
-  color: var(--primary);
   font-size: 16px;
 }
 .new { justify-content: flex-start; font-weight: 600; }

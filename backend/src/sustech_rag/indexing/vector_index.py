@@ -7,7 +7,7 @@ from llama_index.vector_stores.chroma import ChromaVectorStore
 from sustech_rag.config.models import AppConfig
 from sustech_rag.utils.chroma_client import persistent_client
 from sustech_rag.utils.io import read_jsonl
-from sustech_rag.utils.runtime import prepare_model_cache
+from sustech_rag.utils.runtime import prepare_model_cache, resolve_torch_dtype
 
 
 def build_vector_index(config: AppConfig, rebuild: bool = False) -> VectorStoreIndex:
@@ -35,10 +35,18 @@ def build_vector_index(config: AppConfig, rebuild: bool = False) -> VectorStoreI
         for row in chunks
     ]
     model_ref = config.embedding.local_path or config.embedding.model_name
+    embedding_kwargs: dict[str, object] = {}
+    if config.embedding.device:
+        embedding_kwargs["device"] = config.embedding.device
+    embedding_dtype = resolve_torch_dtype(config.embedding.dtype)
+    if embedding_dtype is not None:
+        embedding_kwargs["model_kwargs"] = {"torch_dtype": embedding_dtype}
     embed_model = HuggingFaceEmbedding(
         model_name=model_ref,
         cache_folder=str(huggingface_dir),
         embed_batch_size=config.embedding.batch_size,
+        trust_remote_code=True,
+        **embedding_kwargs,
     )
     chroma_client = persistent_client(str(config.vector_store.persist_dir))
     if rebuild:

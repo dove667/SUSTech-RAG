@@ -10,6 +10,8 @@ def test_load_config() -> None:
     config = load_config("configs/default.yaml")
     assert config.project.name == "sustech-campus-rag"
     assert config.embedding.model_name == "BAAI/bge-small-zh-v1.5"
+    assert config.embedding.device == ""
+    assert config.embedding.dtype == ""
     assert config.processing.min_text_length == 60
     assert str(config.embedding.local_path).endswith(
         "data/models/embeddings/BAAI/bge-small-zh-v1.5"
@@ -17,6 +19,8 @@ def test_load_config() -> None:
     assert str(config.retrieval.reranker_local_path).endswith(
         "data/models/rerankers/BAAI/bge-reranker-v2-m3"
     )
+    assert config.retrieval.reranker_device == ""
+    assert config.retrieval.reranker_dtype == ""
     assert str(config.vector_store.persist_dir).endswith("data/vector_store/chroma")
     assert isinstance(config.llm, LlamaCppConfig)
     assert str(config.llm.model_path).endswith("data/models/llm/qwen/Qwen3-8B-Q4_K_M.gguf")
@@ -44,8 +48,12 @@ def test_load_vllm_config_preserves_absolute_and_home_paths(
             "allowed_domains": ["example.com"],
         },
         "processing": {},
-        "embedding": {"model_name": "embed"},
-        "retrieval": {"reranker_model": "reranker"},
+        "embedding": {"model_name": "embed", "device": "cuda:1", "dtype": "bfloat16"},
+        "retrieval": {
+            "reranker_model": "reranker",
+            "reranker_device": "cuda:2",
+            "reranker_dtype": "bf16",
+        },
         "vector_store": {"persist_dir": "data/vector_store/chroma", "collection_name": "kb"},
         "llm": {
             "backend": "vllm",
@@ -60,6 +68,10 @@ def test_load_vllm_config_preserves_absolute_and_home_paths(
     config = load_config(str(config_path))
 
     assert isinstance(config.llm, VLLMConfig)
+    assert config.embedding.device == "cuda:1"
+    assert config.embedding.dtype == "bfloat16"
+    assert config.retrieval.reranker_device == "cuda:2"
+    assert config.retrieval.reranker_dtype == "bf16"
     assert config.llm.local_path == str(absolute_model_dir.resolve())
     assert config.llm.binary_path == str(
         (home_dir / "miniconda3" / "envs" / "vllm-0.21" / "bin" / "vllm").resolve()

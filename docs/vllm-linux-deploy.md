@@ -7,6 +7,7 @@
 - 启动入口仍然只有一个：`uv run sustech-rag serve`
 - 目标机器：`4 * RTX 4090`
 - 目标模型：`Qwen/Qwen3.6-35B-A3B-FP8`
+- 推荐检索模型：`Qwen/Qwen3-Embedding-4B` + `Qwen/Qwen3-Reranker-4B`
 
 ## 1. 总体结构
 
@@ -69,6 +70,13 @@ uv run sustech-rag index
 
 如果你已经提前准备好了 `data/` 目录，也可以直接复用，不必重新抓取和建库。
 
+如果这台 Linux 服务器主要承担正式推理服务，我建议把样例配置里的检索模型也一起切到：
+
+- `embedding.model_name: Qwen/Qwen3-Embedding-4B`
+- `retrieval.reranker_model: Qwen/Qwen3-Reranker-4B`
+
+对应的样例文件已经按这组模型更新好了。
+
 ## 5. 准备 vLLM 配置
 
 复制一份样例配置：
@@ -81,6 +89,19 @@ cp configs/vllm.linux.example.yaml configs/vllm.qwen35b.yaml
 建议至少检查这些字段：
 
 ```yaml
+embedding:
+  model_name: "Qwen/Qwen3-Embedding-4B"
+  local_path: "data/models/embeddings/Qwen/Qwen3-Embedding-4B"
+  batch_size: 4
+  device: ""
+  dtype: "bfloat16"
+
+retrieval:
+  reranker_model: "Qwen/Qwen3-Reranker-4B"
+  reranker_local_path: "data/models/rerankers/Qwen/Qwen3-Reranker-4B"
+  reranker_device: ""
+  reranker_dtype: "bfloat16"
+
 llm:
   backend: "vllm"
   temperature: 0.2
@@ -98,6 +119,19 @@ llm:
   max_num_batched_tokens: 12288
   reasoning_parser: "qwen3"
 ```
+
+当前样例已经把这两个小模型的 dtype 备注成 `bfloat16`。`device` 先留空，表示继续走底层库默认设备选择。
+
+这点需要特别注意：
+
+- 现在代码里如果 `device` 留空，`SentenceTransformer` / `CrossEncoder` 会在检测到 CUDA 时优先用 GPU
+- 这通常等价于落到“当前可见的第一张卡”，实践里可以理解成 `cuda:0`
+- 但如果 `vLLM` 已经用 `tensor_parallel_size: 4` 占满 4 张 4090，就不建议再默认把这两个小模型塞进 `cuda:0`
+
+更稳的做法通常是二选一：
+
+- 保持 `device: ""` 和 `reranker_device: ""`，让它们跑 CPU
+- 或者明确写成 `cuda:0` / `cuda:1`，但前提是你给 `vLLM` 留了显存余量，或者本来就没把 4 张卡全部占满
 
 ## 6. 为什么先用 FP8
 
@@ -153,12 +187,15 @@ curl http://127.0.0.1:8000/api/health
 - 先调大 `llm.max_num_seqs`
 - 再观察 `llm.max_concurrent_requests`
 - 确认 `tensor_parallel_size: 4` 已生效
+- 如果显存主要给生成模型，`embedding.batch_size` 可以先保持 `4`
 
 显存吃紧：
 
 - 先降低 `max_model_len`
 - 再降低 `max_num_batched_tokens`
 - 最后再降低 `max_num_seqs`
+- 如果检索模型也放在同机 GPU 上，可以再把 `embedding.batch_size` 调小
+- 如果检索模型要上 GPU，优先显式写 `embedding.device` 和 `retrieval.reranker_device`，不要隐式赌默认卡位
 
 启动慢：
 

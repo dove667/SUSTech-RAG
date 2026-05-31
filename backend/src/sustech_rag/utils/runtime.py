@@ -5,6 +5,8 @@ import shutil
 import sys
 from pathlib import Path
 
+import torch
+
 from sustech_rag.utils.io import ensure_dir
 from sustech_rag.utils.platform import default_llama_binary_name
 
@@ -68,3 +70,28 @@ def ensure_vllm_binary(binary_path: str = "") -> str:
         "vLLM in the current serving environment, for example:\n"
         f"  {sys.executable} -m pip install vllm"
     )
+
+
+def resolve_torch_dtype(dtype_name: str) -> object | None:
+    """Map config dtype strings to values accepted by transformers/sentence-transformers."""
+    normalized = dtype_name.strip().lower()
+    if not normalized:
+        return None
+    if normalized == "auto":
+        return "auto"
+
+    mapping = {
+        "bf16": torch.bfloat16,
+        "bfloat16": torch.bfloat16,
+        "fp16": torch.float16,
+        "float16": torch.float16,
+        "half": torch.float16,
+        "fp32": torch.float32,
+        "float32": torch.float32,
+    }
+    if normalized not in mapping:
+        raise ValueError(
+            f"Unsupported torch dtype: {dtype_name!r}. "
+            "Expected one of: auto, bf16, bfloat16, fp16, float16, half, fp32, float32."
+        )
+    return mapping[normalized]

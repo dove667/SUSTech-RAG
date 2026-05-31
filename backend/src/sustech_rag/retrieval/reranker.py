@@ -19,7 +19,12 @@ class RetrievedChunk:
 
 
 class BGECrossEncoderReranker:
-    def __init__(self, model_name: str) -> None:
+    def __init__(
+        self,
+        model_name: str,
+        device: str = "",
+        dtype: object | None = None,
+    ) -> None:
         """
         加载 BGE CrossEncoder 模型用于候选片段重排序。
         输入参数：
@@ -27,7 +32,15 @@ class BGECrossEncoderReranker:
         输出参数：无。
         """
         self.model_name = model_name
-        self.model = CrossEncoder(model_name, trust_remote_code=True)
+        automodel_args: dict[str, object] = {}
+        if dtype is not None:
+            automodel_args["torch_dtype"] = dtype
+        self.model = CrossEncoder(
+            model_name,
+            device=device or None,
+            automodel_args=automodel_args or None,
+            trust_remote_code=True,
+        )
 
     def rerank(
         self,

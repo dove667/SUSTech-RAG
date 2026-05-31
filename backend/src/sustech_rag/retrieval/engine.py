@@ -10,7 +10,7 @@ from sustech_rag.config.models import AppConfig
 from sustech_rag.retrieval.reranker import BGECrossEncoderReranker, RetrievedChunk
 from sustech_rag.retrieval.sparse_search import BM25Searcher
 from sustech_rag.utils.chroma_client import persistent_client
-from sustech_rag.utils.runtime import prepare_model_cache
+from sustech_rag.utils.runtime import prepare_model_cache, resolve_torch_dtype
 
 
 class RetrievalEngine:
@@ -20,17 +20,30 @@ class RetrievalEngine:
         self.config = config
         huggingface_dir = prepare_model_cache(config.project.data_dir)
         model_ref = config.embedding.local_path or config.embedding.model_name
+        embedding_kwargs: dict[str, object] = {}
+        if config.embedding.device:
+            embedding_kwargs["device"] = config.embedding.device
+        embedding_dtype = resolve_torch_dtype(config.embedding.dtype)
+        if embedding_dtype is not None:
+            embedding_kwargs["model_kwargs"] = {"torch_dtype": embedding_dtype}
         Settings.embed_model = HuggingFaceEmbedding(
             model_name=model_ref,
             cache_folder=str(huggingface_dir),
             embed_batch_size=config.embedding.batch_size,
+            trust_remote_code=True,
+            **embedding_kwargs,
         )
         client = persistent_client(str(config.vector_store.persist_dir))
         collection = client.get_or_create_collection(config.vector_store.collection_name)
         vector_store = ChromaVectorStore(chroma_collection=collection)
         self.index = VectorStoreIndex.from_vector_store(vector_store=vector_store)
         reranker_ref = config.retrieval.reranker_local_path or config.retrieval.reranker_model
-        self.reranker = BGECrossEncoderReranker(reranker_ref)
+        reranker_dtype = resolve_torch_dtype(config.retrieval.reranker_dtype)
+        self.reranker = BGECrossEncoderReranker(
+            reranker_ref,
+            device=config.retrieval.reranker_device,
+            dtype=reranker_dtype,
+        )
 
         self._sparse = None
         if config.retrieval.sparse_enabled:

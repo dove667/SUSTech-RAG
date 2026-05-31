@@ -32,6 +32,8 @@ class EmbeddingConfig(BaseModel):
     model_name: str
     local_path: str = ""
     batch_size: int = 16
+    device: str = ""
+    dtype: str = ""
 
 
 class RetrievalConfig(BaseModel):
@@ -41,6 +43,8 @@ class RetrievalConfig(BaseModel):
     rerank_top_n: int = 4
     reranker_model: str
     reranker_local_path: str = ""
+    reranker_device: str = ""
+    reranker_dtype: str = ""
 
 
 class VectorStoreConfig(BaseModel):

@@ -15,6 +15,7 @@ from sustech_rag.config.models import (
 from sustech_rag.llm.backends import LlamaCppBackend
 from sustech_rag.llm.factory import create_llm_backend
 from sustech_rag.llm.vllm_backend import VLLMBackend
+from sustech_rag.utils.runtime import resolve_torch_dtype
 
 
 def _backend_with_runtime_options(device_mode: str, gpu_layers: str = "32") -> LlamaCppBackend:
@@ -110,3 +111,11 @@ def test_vllm_runtime_args_include_multi_gpu_options() -> None:
     assert args[args.index("--distributed-executor-backend") + 1] == "mp"
     assert "--served-model-name" in args
     assert args[args.index("--served-model-name") + 1] == "qwen3-32b"
+
+
+def test_resolve_torch_dtype_supports_bf16_aliases() -> None:
+    import torch
+
+    assert resolve_torch_dtype("bf16") == torch.bfloat16
+    assert resolve_torch_dtype("bfloat16") == torch.bfloat16
+    assert resolve_torch_dtype("") is None

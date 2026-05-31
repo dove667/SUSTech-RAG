@@ -24,17 +24,21 @@ processing:
   chunk_overlap: 100
 
 embedding:
-  model_name: "BAAI/bge-small-zh-v1.5"
-  local_path: "data/models/embeddings/BAAI/bge-small-zh-v1.5"
-  batch_size: 16
+  model_name: "Qwen/Qwen3-Embedding-4B"
+  local_path: ""
+  batch_size: 4
+  device: ""
+  dtype: "bfloat16"
 
 retrieval:
   similarity_top_k: 8
   sparse_top_k: 8
   sparse_enabled: true
   rerank_top_n: 4
-  reranker_model: "BAAI/bge-reranker-v2-m3"
-  reranker_local_path: "data/models/rerankers/BAAI/bge-reranker-v2-m3"
+  reranker_model: "Qwen/Qwen3-Reranker-4B"
+  reranker_local_path: ""
+  reranker_device: ""
+  reranker_dtype: "bfloat16"
 
 vector_store:
   persist_dir: "data/vector_store/chroma"
@@ -54,7 +58,7 @@ llm:
   binary_path: "~/miniconda3/envs/vllm-0.21/bin/vllm"
   served_model_name: "qwen3.6-35b-a3b-fp8"
   dtype: "auto"
-  gpu_memory_utilization: 0.92
+  gpu_memory_utilization: 0.82
   tensor_parallel_size: 4
   pipeline_parallel_size: 1
   data_parallel_size: 1

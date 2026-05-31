@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import threading
 from collections.abc import Iterator
+from contextlib import contextmanager
 
 from sustech_rag.config.models import AppConfig
-from sustech_rag.llm.backends import LlamaCppBackend
+from sustech_rag.llm import create_llm_backend
 from sustech_rag.retrieval.engine import RetrievalEngine
 from sustech_rag.retrieval.reranker import RetrievedChunk
 
@@ -15,13 +17,19 @@ _DEFAULT_SYSTEM_PROMPT = (
 )
 
 
+class GenerationCancelledError(RuntimeError):
+    """当前请求在进入或执行生成流程时被取消。"""
+
+
 class RagService:
     """封装检索与大模型生成的问答服务。"""
 
     def __init__(self, config: AppConfig) -> None:
         self.config = config
         self.retrieval = RetrievalEngine(config)
-        self.llm = LlamaCppBackend(config)
+        self.llm = create_llm_backend(config)
+        self._request_slots = max(1, config.llm.max_concurrent_requests)
+        self._request_semaphore = threading.BoundedSemaphore(self._request_slots)
 
     def _build_chat_messages(
         self, query: str, chunks: list[RetrievedChunk], history: list[dict]
@@ -57,15 +65,20 @@ class RagService:
         raise ValueError("no user message found in conversation")
 
     def answer(self, query: str) -> str:
-        chunks = self.retrieval.retrieve(query)
-        msgs = self._build_chat_messages(query, chunks, [])
-        # build a plain prompt from messages for generate()
-        prompt = "\n".join(
-            f"<|{m['role']}|>\n{m['content']}" for m in msgs
-        ) + "\n<|assistant|>\n"
-        return self.llm.generate(prompt)
+        with self._acquire_request_slot():
+            chunks = self.retrieval.retrieve(query)
+            msgs = self._build_chat_messages(query, chunks, [])
+            # build a plain prompt from messages for generate()
+            prompt = "\n".join(
+                f"<|{m['role']}|>\n{m['content']}" for m in msgs
+            ) + "\n<|assistant|>\n"
+            return self.llm.generate(prompt)
 
-    def answer_stream(self, messages: list[dict]) -> Iterator[tuple[str, object]]:
+    def answer_stream(
+        self,
+        messages: list[dict],
+        cancel_event: threading.Event | None = None,
+    ) -> Iterator[tuple[str, object]]:
         """
         Retrieve and stream. Yields (event_type, data):
         - ("reference", list[RetrievedChunk])
@@ -73,34 +86,46 @@ class RagService:
         - ("think.end", None)
         - ("content.delta", str)
         """
-        query = self._extract_last_user_query(messages)
-        chunks = self.retrieval.retrieve(query)
+        with self._acquire_request_slot(cancel_event):
+            query = self._extract_last_user_query(messages)
+            chunks = self.retrieval.retrieve(query)
 
-        if chunks:
-            yield ("reference", chunks)
+            if cancel_event is not None and cancel_event.is_set():
+                raise GenerationCancelledError("generation cancelled")
 
-        # Build conversation history (all messages before the last user query)
-        history = [m for m in messages if m.get("content", "").strip()]
-        # Remove the last message (current query) from history since it's the query
-        if history and history[-1].get("content", "").strip() == query:
-            history = history[:-1]
+            if chunks:
+                yield ("reference", chunks)
 
-        chat_messages = self._build_chat_messages(query, chunks, history)
+            # Build conversation history (all messages before the last user query)
+            history = [m for m in messages if m.get("content", "").strip()]
+            # Remove the last message (current query) from history since it's the query
+            if history and history[-1].get("content", "").strip() == query:
+                history = history[:-1]
 
-        think_open = False
-        for event_type, text in self.llm.generate_stream(chat_messages):
-            if event_type == "think":
-                if not think_open:
-                    think_open = True
-                yield ("think.delta", text)
-            elif event_type == "content":
-                if think_open:
-                    yield ("think.end", None)
-                    think_open = False
-                yield ("content.delta", text)
+            chat_messages = self._build_chat_messages(query, chunks, history)
 
-        if think_open:
-            yield ("think.end", None)
+            think_open = False
+            for event_type, text in self.llm.generate_stream(
+                chat_messages,
+                cancel_event=cancel_event,
+            ):
+                if cancel_event is not None and cancel_event.is_set():
+                    raise GenerationCancelledError("generation cancelled")
+                if event_type == "think":
+                    if not think_open:
+                        think_open = True
+                    yield ("think.delta", text)
+                elif event_type == "content":
+                    if think_open:
+                        yield ("think.end", None)
+                        think_open = False
+                    yield ("content.delta", text)
+
+            if cancel_event is not None and cancel_event.is_set():
+                raise GenerationCancelledError("generation cancelled")
+
+            if think_open:
+                yield ("think.end", None)
 
     def health_check(self) -> dict:
         components = {}
@@ -118,3 +143,18 @@ class RagService:
             "status": "ready" if all_ok else "error",
             "components": components,
         }
+
+    @contextmanager
+    def _acquire_request_slot(
+        self,
+        cancel_event: threading.Event | None = None,
+    ) -> Iterator[None]:
+        while True:
+            if cancel_event is not None and cancel_event.is_set():
+                raise GenerationCancelledError("generation cancelled")
+            if self._request_semaphore.acquire(timeout=0.05):
+                break
+        try:
+            yield
+        finally:
+            self._request_semaphore.release()

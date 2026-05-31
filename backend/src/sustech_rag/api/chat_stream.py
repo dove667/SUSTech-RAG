@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import json
 import asyncio
+import json
 import threading
 from collections.abc import AsyncIterator, Iterator
 from typing import Any
 
-from sustech_rag.pipeline.rag_service import RagService
+from sustech_rag.pipeline.rag_service import GenerationCancelledError, RagService
 from sustech_rag.retrieval.reranker import RetrievedChunk
 
 # 取消令牌注册表：key = "{identity_id}:{message_id}" → threading.Event
@@ -69,7 +69,7 @@ def sync_chat_stream(
     api_messages = [{"role": message.role, "content": message.content} for message in messages]
 
     try:
-        for event_type, data in rag.answer_stream(api_messages):
+        for event_type, data in rag.answer_stream(api_messages, cancel_event=cancel_event):
             if cancel_event.is_set():
                 yield sse_frame("error", {"code": "cancelled", "message": "generation cancelled"})
                 yield sse_frame(
@@ -92,6 +92,15 @@ def sync_chat_stream(
         yield sse_frame(
             "done",
             {"finish_reason": "stop", "usage": {"prompt_tokens": 0, "completion_tokens": 0}},
+        )
+    except GenerationCancelledError:
+        yield sse_frame("error", {"code": "cancelled", "message": "generation cancelled"})
+        yield sse_frame(
+            "done",
+            {
+                "finish_reason": "cancelled",
+                "usage": {"prompt_tokens": 0, "completion_tokens": 0},
+            },
         )
     except Exception as exc:
         yield sse_frame("error", {"code": "server_error", "message": str(exc)})

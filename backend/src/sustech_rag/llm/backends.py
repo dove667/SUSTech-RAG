@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import threading
 import time
 from collections.abc import Iterator
 from pathlib import Path
@@ -74,15 +75,9 @@ class LlamaCppBackend:
         last_error: str | None = None
         while time.time() < deadline:
             if self._proc is not None and self._proc.poll() is not None:
-                stderr = b""
-                if self._proc.stderr:
-                    try:
-                        stderr = self._proc.stderr.read()
-                    except OSError as exc:
-                        stderr = f"(failed to read stderr: {exc})".encode()
                 raise RuntimeError(
-                    "llama-server exited unexpectedly. stderr: "
-                    + stderr.decode("utf-8", errors="replace").strip()
+                    "llama-server exited unexpectedly. "
+                    "Check the process output above for diagnostics."
                 )
             try:
                 resp = httpx.get(
@@ -149,7 +144,11 @@ class LlamaCppBackend:
         except httpx.HTTPError as exc:
             raise RuntimeError(f"llama-server request failed: {exc}") from exc
 
-    def generate_stream(self, messages: list[dict]) -> Iterator[tuple[str, str]]:
+    def generate_stream(
+        self,
+        messages: list[dict],
+        cancel_event: threading.Event | None = None,
+    ) -> Iterator[tuple[str, str]]:
         """Stream via /v1/chat/completions; yields ("think", text) or ("content", text)."""
         if self._proc is None or self._proc.poll() is not None:
             raise RuntimeError("llama-server is not running")
@@ -171,6 +170,8 @@ class LlamaCppBackend:
             ) as resp:
                 resp.raise_for_status()
                 for line in resp.iter_lines():
+                    if cancel_event is not None and cancel_event.is_set():
+                        break
                     if not line.startswith("data: "):
                         continue
                     data_str = line[6:]

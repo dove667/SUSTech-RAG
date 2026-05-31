@@ -116,6 +116,7 @@ class LocalLLMConfig(BaseModel):
     """
     定义本地 llama.cpp 后端运行参数。
     输入参数：
+    - backend：LLM 后端名称，当前支持 llama_cpp。
     - model_path：GGUF 模型路径，默认为空。
     - device_mode：设备模式，默认 cpu。
     - device_name：自定义设备名称，默认为空。
@@ -126,12 +127,14 @@ class LocalLLMConfig(BaseModel):
     - n_ctx：上下文长度。
     - temperature：采样温度。
     - max_tokens：最大输出 token 数。
+    - max_concurrent_requests：后端允许同时处理的请求数。
     - server_port：llama-server HTTP 端口，默认 8081。
     - extra_args：额外命令行参数列表。
     输出参数：
     - LocalLLMConfig：返回本地大模型配置模型实例。
     """
 
+    backend: str = "llama_cpp"
     model_path: str = ""
     device_mode: str = "cpu"
     device_name: str = ""
@@ -142,6 +145,7 @@ class LocalLLMConfig(BaseModel):
     n_ctx: int = 8192
     temperature: float = 0.2
     max_tokens: int = 512
+    max_concurrent_requests: int = 1
     stop: list[str] = Field(default_factory=list)
     server_port: int = 8081
     extra_args: list[str] = Field(default_factory=list)

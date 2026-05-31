@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import threading
 import time
 from pathlib import Path
 
@@ -32,7 +33,11 @@ def client(monkeypatch: pytest.MonkeyPatch, config_yaml: str):
         def generate(self, prompt: str) -> str:
             return "hello"
 
-        def generate_stream(self, messages: list[dict]):
+        def generate_stream(
+            self,
+            messages: list[dict],
+            cancel_event: threading.Event | None = None,
+        ):
             yield ("think", "let me ")
             yield ("think", "think")
             yield ("content", "hel")
@@ -46,7 +51,11 @@ def client(monkeypatch: pytest.MonkeyPatch, config_yaml: str):
         def health_check(self) -> dict:
             return {"status": "ready", "components": {"llm": "ok", "retrieval": "ok"}}
 
-        def answer_stream(self, messages: list[dict]):
+        def answer_stream(
+            self,
+            messages: list[dict],
+            cancel_event: threading.Event | None = None,
+        ):
             yield ("reference", [
                 RetrievedChunk(
                     text="snippet text",
@@ -56,14 +65,24 @@ def client(monkeypatch: pytest.MonkeyPatch, config_yaml: str):
             ])
             # simulate slow generation so cancel tests can intercept
             time.sleep(0.05)
+            if cancel_event is not None and cancel_event.is_set():
+                return
             yield ("think.delta", "let me ")
             time.sleep(0.05)
+            if cancel_event is not None and cancel_event.is_set():
+                return
             yield ("think.delta", "think")
             time.sleep(0.05)
+            if cancel_event is not None and cancel_event.is_set():
+                return
             yield ("think.end", None)
             time.sleep(0.05)
+            if cancel_event is not None and cancel_event.is_set():
+                return
             yield ("content.delta", "hel")
             time.sleep(0.05)
+            if cancel_event is not None and cancel_event.is_set():
+                return
             yield ("content.delta", "lo")
 
     monkeypatch.setattr("sustech_rag.api.app.RagService", FakeRag)

@@ -1,8 +1,6 @@
 # SUSTech Campus RAG Backend
 
-[![zread](https://img.shields.io/badge/Ask_Zread-_.svg?style=plastic&color=00b0aa&labelColor=000000&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTQuOTYxNTYgMS42MDAxSDIuMjQxNTZDMS44ODgxIDEuNjAwMSAxLjYwMTU2IDEuODg2NjQgMS42MDE1NiAyLjI0MDFWNC45NjAxQzEuNjAxNTYgNS4zMTM1NiAxLjg4ODEgNS42MDAxIDIuMjQxNTYgNS42MDAxSDQuOTYxNTZDNS4zMTUwMiA1LjYwMDEgNS42MDE1NiA1LjMxMzU2IDUuNjAxNTYgNC45NjAxVjIuMjQwMUM1LjYwMTU2IDEuODg2NjQgNS4zMTUwMiAxLjYwMDEgNC45NjE1NiAxLjYwMDFaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00Ljk2MTU2IDEwLjM5OTlIMi4yNDE1NkMxLjg4ODEgMTAuMzk5OSAxLjYwMTU2IDEwLjY4NjQgMS42MDE1NiAxMS4wMzk5VjEzLjc1OTlDMS42MDE1NiAxNC4xMTM0IDEuODg4MSAxNC4zOTk5IDIuMjQxNTYgMTQuMzk5OUg0Ljk2MTU2QzUuMzE1MDIgMTQuMzk5OSA1LjYwMTU2IDE0LjExMzQgNS42MDE1NiAxMy43NTk5VjExLjAzOTlDNS42MDE1NiAxMC42ODY0IDUuMzE1MDIgMTAuMzk5OSA0Ljk2MTU2IDEwLjM5OTlaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik0xMy43NTg0IDEuNjAwMUgxMS4wMzg0QzEwLjY4NSAxLjYwMDEgMTAuMzk4NCAxLjg4NjY0IDEwLjM5ODQgMi4yNDAxVjQuOTYwMUMxMC4zOTg0IDUuMzEzNTYgMTAuNjg1IDUuNjAwMSAxMS4wMzg0IDUuNjAwMUgxMy43NTg0QzE0LjExMTkgNS42MDAxIDE0LjM5ODQgNS4zMTM1NiAxNC4zOTg0IDQuOTYwMVYyLjI0MDFDMTQuMzk4NCAxLjg4NjY0IDE0LjExMTkgMS42MDAxIDEzLjc1ODQgMS42MDAxWiIgZmlsbD0iI2ZmZiIvPgo8cGF0aCBkPSJNNCAxMkwxMiA0TDQgMTJaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00IDEyTDEyIDQiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K&logoColor=ffffff)](https://zread.ai/dove667/SUSTech-RAG)
-
-Python 后端负责完整 RAG 链路：网页抓取、文本清洗、分块、向量索引、检索、重排序、FastAPI SSE 服务和本地 llama.cpp 生成。
+Python 后端负责完整 RAG 链路：网页抓取、文本清洗、分块、向量索引、检索、重排序、FastAPI SSE 服务，以及 `llama.cpp` / `vLLM` 两种生成后端。
 
 ## 技术栈
 
@@ -13,6 +11,7 @@ Python 后端负责完整 RAG 链路：网页抓取、文本清洗、分块、�
 - `BAAI/bge-small-zh-v1.5` embedding
 - `BAAI/bge-reranker-v2-m3` reranker
 - `llama.cpp llama-server + Qwen3 GGUF` 本地生成
+- `vLLM OpenAI-compatible server` Linux 多卡服务
 - `FastAPI + StreamingResponse` 对外提供 HTTP/SSE API
 
 ## 安装
@@ -26,6 +25,12 @@ uv sync
 
 ```bash
 uv sync --extra dev
+```
+
+Linux 服务器如果要启用 `vLLM`，请在独立的 CUDA 服务环境中单独安装：
+
+```bash
+pip install vllm
 ```
 
 ## 数据管线
@@ -70,6 +75,8 @@ uv run sustech-rag serve --host 127.0.0.1 --port 8000
 uv run sustech-rag serve --host 127.0.0.1 --port 8000 --config /absolute/path/to/config.yaml
 ```
 
+4 张 `RTX 4090` 的 `vLLM` 样例配置见 [configs/vllm.linux.example.yaml](configs/vllm.linux.example.yaml)。
+
 主要接口：
 
 - `GET /api/health`
@@ -92,6 +99,7 @@ uv run sustech-rag serve --host 127.0.0.1 --port 8000 --config /absolute/path/to
 - `vector_store.persist_dir`：Chroma 持久化目录
 - `llm.model_path`：GGUF 权重
 - `llm.server_port`：llama-server 端口
+- `llm.backend`：`llama_cpp` 或 `vllm`
 
 相对路径会按配置文件所在项目根目录解析。
 
@@ -109,14 +117,14 @@ data/models/.cache/              Hugging Face 缓存
 
 这些目录默认不提交到 Git。
 
-## llama.cpp
+## llama.cpp / vLLM
 
-后端只使用 `llama-server` 的 OpenAI-compatible 接口，不再调用 `llama-cli`：
+后端会根据 `llm.backend` 选择生成服务：
 
 - 非流式 CLI 查询走 `/v1/completions`
 - WebUI 流式问答走 `/v1/chat/completions`
 
-后端只从系统 PATH 查找 `llama-server`。保守调试可设置：
+`llama.cpp` 后端只从系统 PATH 查找 `llama-server`。保守调试可设置：
 
 ```bash
 uv run sustech-rag download-llama
@@ -127,6 +135,29 @@ uv run sustech-rag download-model
 embedding/reranker/GGUF。若安装目录不在 PATH 中，llama.cpp 安装命令会打印需要添加的
 PATH 命令。后端运行时不会自动下载 GGUF；缺失时请先运行模型下载命令，或把
 `llm.model_path` 指向已有 GGUF 文件。
+
+`vLLM` 后端会从 PATH 查找 `vllm` CLI，也支持在配置里通过 `llm.binary_path` 指向另一个 conda 环境中的 `bin/vllm`，然后仍然由 `uv run sustech-rag serve` 一键拉起。推荐在 Linux/CUDA 环境中使用单机多卡张量并行；4 卡样例已在 `configs/vllm.linux.example.yaml` 给出。
+
+如果你希望 backend 和 vLLM 在同一台机器、但分别处于不同 conda 环境，可以这样配置：
+
+```yaml
+llm:
+  backend: "vllm"
+  binary_path: "~/miniconda3/envs/vllm-0.21/bin/vllm"
+  model_name: "Qwen/Qwen3.6-35B-A3B-FP8"
+  tensor_parallel_size: 4
+```
+
+这样启动命令仍然只有一个：
+
+```bash
+uv run sustech-rag serve --config /absolute/path/to/config.yaml
+```
+
+如果目标机器是 `4*4090`，我当前更推荐先从官方 `FP8` checkpoint 起步，也就是
+`Qwen/Qwen3.6-35B-A3B-FP8`。这样显存余量会更舒服，给 KV cache 和更稳的服务参数留空间。
+如果你后续实测在 consumer Ada 环境上更偏好非 `FP8` 权重，再回退到
+`Qwen/Qwen3.6-35B-A3B` 也很自然，其他参数基本不用大改。
 
 ```yaml
 llm:
@@ -156,4 +187,5 @@ uv run ruff check .
 - [../docs/project-guide.md](../docs/project-guide.md)
 - [../docs/architecture.md](../docs/architecture.md)
 - [../docs/runbook.md](../docs/runbook.md)
+- [../docs/vllm-linux-deploy.md](../docs/vllm-linux-deploy.md)
 - [CONTRIBUTING.md](CONTRIBUTING.md)

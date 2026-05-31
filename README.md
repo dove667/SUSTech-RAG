@@ -1,11 +1,13 @@
 # SUSTech Campus RAG
 
+[![zread](https://img.shields.io/badge/Ask_Zread-_.svg?style=plastic&color=00b0aa&labelColor=000000&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTQuOTYxNTYgMS42MDAxSDIuMjQxNTZDMS44ODgxIDEuNjAwMSAxLjYwMTU2IDEuODg2NjQgMS42MDE1NiAyLjI0MDFWNC45NjAxQzEuNjAxNTYgNS4zMTM1NiAxLjg4ODEgNS42MDAxIDIuMjQxNTYgNS42MDAxSDQuOTYxNTZDNS4zMTUwMiA1LjYwMDEgNS42MDE1NiA1LjMxMzU2IDUuNjAxNTYgNC45NjAxVjIuMjQwMUM1LjYwMTU2IDEuODg2NjQgNS4zMTUwMiAxLjYwMDEgNC45NjE1NiAxLjYwMDFaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00Ljk2MTU2IDEwLjM5OTlIMi4yNDE1NkMxLjg4ODEgMTAuMzk5OSAxLjYwMTU2IDEwLjY4NjQgMS42MDE1NiAxMS4wMzk5VjEzLjc1OTlDMS42MDE1NiAxNC4xMTM0IDEuODg4MSAxNC4zOTk5IDIuMjQxNTYgMTQuMzk5OUg0Ljk2MTU2QzUuMzE1MDIgMTQuMzk5OSA1LjYwMTU2IDE0LjExMzQgNS42MDE1NiAxMy43NTk5VjExLjAzOTlDNS42MDE1NiAxMC42ODY0IDUuMzE1MDIgMTAuMzk5OSA0Ljk2MTU2IDEwLjM5OTlaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik0xMy43NTg0IDEuNjAwMUgxMS4wMzg0QzEwLjY4NSAxLjYwMDEgMTAuMzk4NCAxLjg4NjY0IDEwLjM5ODQgMi4yNDAxVjQuOTYwMUMxMC4zOTg0IDUuMzEzNTYgMTAuNjg1IDUuNjAwMSAxMS4wMzg0IDUuNjAwMUgxMy43NTg0QzE0LjExMTkgNS42MDAxIDE0LjM5ODQgNS4zMTM1NiAxNC4zOTg0IDQuOTYwMVYyLjI0MDFDMTQuMzk4NCAxLjg4NjY0IDE0LjExMTkgMS42MDAxIDEzLjc1ODQgMS42MDAxWiIgZmlsbD0iI2ZmZiIvPgo8cGF0aCBkPSJNNCAxMkwxMiA0TDQgMTJaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00IDEyTDEyIDQiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K&logoColor=ffffff)](https://zread.ai/dove667/SUSTech-RAG)
+
 面向南方科技大学公开网页的本地优先 RAG 项目。仓库由两部分组成：
 
 - `backend/`：Python 数据管线与 FastAPI 服务，负责抓取、清洗、分块、向量索引、检索、重排序和 llama.cpp 生成。
 - `frontend/`：Vue 3 + Vite WebUI，负责桌面/移动/嵌入/悬浮入口、流式 SSE 对话、主题配置和本地会话存储。
 
-当前默认数据源是 `https://www.sustech.edu.cn/`，默认模型组合是 BGE embedding、BGE reranker 和 Qwen3 GGUF。
+当前默认数据源是 `https://www.sustech.edu.cn/`，默认模型组合是 BGE embedding、BGE reranker 和 Qwen3 GGUF。后端现在同时支持 `llama.cpp` 和 `vLLM`，通过 YAML 中的 `llm.backend` 切换；`vLLM` 还可以通过配置指向另一个 conda 环境里的 `bin/vllm`，例如 `~/miniconda3/envs/vllm-0.21/bin/vllm`。
 
 ## 快速启动
 
@@ -43,7 +45,7 @@ npm run dev
   -> chunk 生成 chunks.jsonl
   -> index 写入 ChromaDB
   -> retrieve + rerank
-  -> llama.cpp 流式生成回答
+  -> llama.cpp / vLLM 流式生成回答
 ```
 
 常用命令：
@@ -89,12 +91,13 @@ backend/data/models/llm/qwen/Qwen3-8B-Q4_K_M.gguf
 - [前端 README](frontend/README.md)
 - [后端架构](docs/architecture.md)
 - [运行手册](docs/runbook.md)
+- [vLLM Linux 部署](docs/vllm-linux-deploy.md)
 - [项目导览](docs/project-guide.md)
 - [前后端 API](docs/API.md)
 
 ## 当前注意事项
 
-- 后端目前只实现本地 llama.cpp 后端。
+- 后端支持 `llama.cpp` 与 `vLLM` 两种 LLM 后端；Linux 多卡部署可参考 `backend/configs/vllm.linux.example.yaml`。
 - API 请求体里的 `model`、`knowledge_base_ids` 和部分 `options` 已在 schema 中保留，但当前服务端主要使用 YAML 配置。
 - 前端会把会话和设置存储在浏览器 `localStorage`。
 - 生产部署建议通过反向代理补充鉴权、HTTPS、CORS 白名单和日志采集。

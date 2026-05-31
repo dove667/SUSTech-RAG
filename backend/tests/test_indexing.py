@@ -9,7 +9,7 @@ from sustech_rag.config.models import (
     AppConfig,
     CrawlConfig,
     EmbeddingConfig,
-    LocalLLMConfig,
+    LlamaCppConfig,
     ProcessingConfig,
     ProjectConfig,
     RetrievalConfig,
@@ -38,7 +38,7 @@ def _make_config(tmp_path: Path, batch_size: int = 4) -> AppConfig:
             persist_dir=tmp_path / "vector_store",
             collection_name="test-collection",
         ),
-        llm=LocalLLMConfig(),
+        llm=LlamaCppConfig(),
     )
 
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import sys
 from pathlib import Path
 
 from sustech_rag.utils.io import ensure_dir
@@ -44,4 +45,26 @@ def ensure_gguf_model(model_path: str) -> str:
         f"GGUF model not found: {model_path}\n"
         "Run uv run sustech-rag download-model or set llm.model_path "
         "to an existing GGUF file."
+    )
+
+
+def ensure_vllm_binary(binary_path: str = "") -> str:
+    """Ensure *vllm* CLI is available for launching the OpenAI-compatible server."""
+    candidate = binary_path.strip() or "vllm"
+    resolved = shutil.which(candidate)
+    if resolved:
+        print(f"[sustech-rag] vLLM CLI found on PATH: {resolved}", flush=True)
+        return resolved
+
+    path = Path(candidate).expanduser()
+    if path.exists() and path.is_file():
+        resolved = str(path.resolve())
+        print(f"[sustech-rag] vLLM CLI found at configured path: {resolved}", flush=True)
+        return resolved
+
+    raise FileNotFoundError(
+        f"vLLM CLI not found: {candidate}\n"
+        "Set llm.binary_path to the vllm executable in another conda environment, or install "
+        "vLLM in the current serving environment, for example:\n"
+        f"  {sys.executable} -m pip install vllm"
     )

@@ -9,7 +9,7 @@ from pathlib import Path
 
 import httpx
 
-from sustech_rag.config.models import AppConfig
+from sustech_rag.config.models import AppConfig, LlamaCppConfig
 
 
 class LlamaCppBackend:
@@ -22,6 +22,8 @@ class LlamaCppBackend:
     def __init__(self, config: AppConfig) -> None:
         from sustech_rag.utils.runtime import ensure_gguf_model, ensure_llama_cpp_binary
 
+        if not isinstance(config.llm, LlamaCppConfig):
+            raise TypeError("LlamaCppBackend requires a llama_cpp configuration.")
         local = config.llm
         self.binary = ensure_llama_cpp_binary()
         self.model_path = ensure_gguf_model(local.model_path)

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import yaml
 
-from sustech_rag.config.models import AppConfig
+from sustech_rag.config.models import AppConfig, LlamaCppConfig, VLLMConfig
 
 
 def resolve_config_path(config_path: str | None = None) -> Path:
@@ -18,6 +18,13 @@ def resolve_config_path(config_path: str | None = None) -> Path:
 
     raw = config_path or "configs/default.yaml"
     return Path(raw).expanduser().resolve()
+
+
+def _resolve_path_value(raw_path: str, project_root: Path) -> str:
+    path = Path(raw_path).expanduser()
+    if path.is_absolute():
+        return str(path.resolve())
+    return str((project_root / path).resolve())
 
 
 def load_config(config_path: str | None = None) -> AppConfig:
@@ -34,15 +41,23 @@ def load_config(config_path: str | None = None) -> AppConfig:
         payload = yaml.safe_load(fh)
     config = AppConfig.model_validate(payload)
     project_root = path.parent.parent
-    data_dir = (project_root / config.project.data_dir).resolve()
+    data_dir = Path(_resolve_path_value(str(config.project.data_dir), project_root))
     config.project.data_dir = data_dir
-    config.vector_store.persist_dir = (project_root / config.vector_store.persist_dir).resolve()
+    config.vector_store.persist_dir = Path(
+        _resolve_path_value(str(config.vector_store.persist_dir), project_root)
+    )
     if config.embedding.local_path:
-        config.embedding.local_path = str((project_root / config.embedding.local_path).resolve())
+        config.embedding.local_path = _resolve_path_value(config.embedding.local_path, project_root)
     if config.retrieval.reranker_local_path:
-        config.retrieval.reranker_local_path = str(
-            (project_root / config.retrieval.reranker_local_path).resolve()
+        config.retrieval.reranker_local_path = _resolve_path_value(
+            config.retrieval.reranker_local_path,
+            project_root,
         )
-    if config.llm.model_path:
-        config.llm.model_path = str((project_root / config.llm.model_path).resolve())
+    if isinstance(config.llm, LlamaCppConfig) and config.llm.model_path:
+        config.llm.model_path = _resolve_path_value(config.llm.model_path, project_root)
+    if isinstance(config.llm, VLLMConfig):
+        if config.llm.local_path:
+            config.llm.local_path = _resolve_path_value(config.llm.local_path, project_root)
+        if config.llm.binary_path:
+            config.llm.binary_path = _resolve_path_value(config.llm.binary_path, project_root)
     return config

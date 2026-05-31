@@ -83,6 +83,9 @@ uv run sustech-rag serve --host 127.0.0.1 --port 8000
 curl http://127.0.0.1:8000/api/health
 ```
 
+如果要在 Linux 服务器上使用 `vLLM` 多卡部署，并让 backend 去拉起另一个虚拟环境中的
+`vllm`，可以直接参考 [vLLM Linux 部署](vllm-linux-deploy.md)。
+
 ## 6. 与前端联调
 
 ```bash

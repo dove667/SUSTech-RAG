@@ -55,7 +55,6 @@ llm:
   server_port: 8081
   model_name: "Qwen/Qwen3.6-35B-A3B-FP8"
   local_path: ""
-  binary_path: ""
   served_model_name: "qwen3.6-35b-a3b-fp8"
   dtype: "auto"
   gpu_memory_utilization: 0.82

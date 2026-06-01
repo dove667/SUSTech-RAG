@@ -76,9 +76,9 @@ def query(
     """
     执行一次命令行 RAG 问答，并输出模型回答。
 
-    这个命令用于端到端检查：会临时启动 llama-server，完成一次检索、
-    rerank 和生成后立即关闭。连续对话或前端联调请使用 serve，让
-    llama-server 常驻内存，避免每次提问都重新加载模型。
+    这个命令用于端到端检查：会临时启动当前配置对应的托管 LLM 服务，
+    完成一次检索、rerank 和生成后立即关闭。连续对话或前端联调请
+    使用 serve，让模型进程常驻内存，避免每次提问都重新加载模型。
 
     输入参数：
         question：用户输入的问题文本。
@@ -90,12 +90,12 @@ def query(
 
     app_config = load_config(config)
     service = RagService(app_config)
-    # query 是一次性命令行检查入口；llama-server 只在本次回答期间存活。
-    service.llm.start()
+    # query 是一次性命令行检查入口；托管 LLM 只在本次回答期间存活。
+    service.llm_launcher.start()
     try:
         typer.echo(service.answer(question))
     finally:
-        service.llm.shutdown()
+        service.llm_launcher.shutdown()
 
 
 @app.command()

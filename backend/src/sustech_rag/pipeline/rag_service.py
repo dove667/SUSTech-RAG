@@ -5,7 +5,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 
 from sustech_rag.config.models import AppConfig
-from sustech_rag.llm import create_llm_backend
+from sustech_rag.llm import create_llm_runtime
 from sustech_rag.retrieval.engine import RetrievalEngine
 from sustech_rag.retrieval.reranker import RetrievedChunk
 
@@ -27,7 +27,9 @@ class RagService:
     def __init__(self, config: AppConfig) -> None:
         self.config = config
         self.retrieval = RetrievalEngine(config)
-        self.llm = create_llm_backend(config)
+        runtime = create_llm_runtime(config)
+        self.llm = runtime.client
+        self.llm_launcher = runtime.launcher
         self._request_slots = max(1, config.llm.max_concurrent_requests)
         self._request_semaphore = threading.BoundedSemaphore(self._request_slots)
 
@@ -49,7 +51,6 @@ class RagService:
             content = m.get("content", "")
             if role in ("user", "assistant") and content.strip():
                 messages.append({"role": role, "content": content.strip()})
-        # Ensure the last message is the user query
         if (
             not messages
             or messages[-1].get("role") != "user"
@@ -68,7 +69,6 @@ class RagService:
         with self._acquire_request_slot():
             chunks = self.retrieval.retrieve(query)
             msgs = self._build_chat_messages(query, chunks, [])
-            # build a plain prompt from messages for generate()
             prompt = "\n".join(
                 f"<|{m['role']}|>\n{m['content']}" for m in msgs
             ) + "\n<|assistant|>\n"
@@ -79,13 +79,6 @@ class RagService:
         messages: list[dict],
         cancel_event: threading.Event | None = None,
     ) -> Iterator[tuple[str, object]]:
-        """
-        Retrieve and stream. Yields (event_type, data):
-        - ("reference", list[RetrievedChunk])
-        - ("think.delta", str)
-        - ("think.end", None)
-        - ("content.delta", str)
-        """
         with self._acquire_request_slot(cancel_event):
             query = self._extract_last_user_query(messages)
             chunks = self.retrieval.retrieve(query)
@@ -96,9 +89,7 @@ class RagService:
             if chunks:
                 yield ("reference", chunks)
 
-            # Build conversation history (all messages before the last user query)
             history = [m for m in messages if m.get("content", "").strip()]
-            # Remove the last message (current query) from history since it's the query
             if history and history[-1].get("content", "").strip() == query:
                 history = history[:-1]
 
@@ -135,7 +126,7 @@ class RagService:
         except Exception as exc:
             components["retrieval"] = str(exc)
 
-        llm_ok, llm_msg = self.llm.verify()
+        llm_ok, llm_msg = self.llm_launcher.verify()
         components["llm"] = llm_msg
 
         all_ok = all(v == "ok" for v in components.values())

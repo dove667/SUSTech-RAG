@@ -12,40 +12,36 @@ from sustech_rag.config.models import (
     VectorStoreConfig,
     VLLMConfig,
 )
-from sustech_rag.llm.backends import LlamaCppBackend
-from sustech_rag.llm.factory import create_llm_backend
-from sustech_rag.llm.vllm_backend import VLLMBackend
+from sustech_rag.llm.factory import create_llm_runtime
+from sustech_rag.llm.llama_cpp import LlamaCppLauncher
+from sustech_rag.llm.vllm import VLLMClient, VLLMLauncher
 from sustech_rag.utils.runtime import resolve_torch_dtype
 
 
-def _backend_with_runtime_options(device_mode: str, gpu_layers: str = "32") -> LlamaCppBackend:
-    backend = object.__new__(LlamaCppBackend)
-    backend._device_mode = device_mode
-    backend._device_name = ""
-    backend._gpu_layers = gpu_layers
-    backend._threads = 0
-    backend._threads_batch = 0
-    backend._reasoning = "off"
-    return backend
+def _launcher_with_runtime_options(device_mode: str, gpu_layers: str = "32") -> LlamaCppLauncher:
+    launcher = object.__new__(LlamaCppLauncher)
+    launcher._device_mode = device_mode
+    launcher._device_name = ""
+    launcher._gpu_layers = gpu_layers
+    launcher._threads = 0
+    launcher._threads_batch = 0
+    launcher._reasoning = "off"
+    return launcher
 
 
 def test_metal_mode_uses_implicit_llama_cpp_device_selection() -> None:
-    backend = _backend_with_runtime_options("metal")
+    launcher = _launcher_with_runtime_options("metal")
 
-    assert backend._build_runtime_args() == ["-ngl", "32", "--reasoning", "off"]
+    assert launcher._build_runtime_args() == ["-ngl", "32", "--reasoning", "off"]
 
 
 def test_cpu_mode_disables_device_offload() -> None:
-    backend = _backend_with_runtime_options("cpu", gpu_layers="0")
+    launcher = _launcher_with_runtime_options("cpu", gpu_layers="0")
 
-    assert backend._build_runtime_args() == ["--device", "none", "-ngl", "0", "--reasoning", "off"]
+    assert launcher._build_runtime_args() == ["--device", "none", "-ngl", "0", "--reasoning", "off"]
 
 
-def test_factory_selects_vllm_backend(monkeypatch) -> None:
-    monkeypatch.setattr(
-        "sustech_rag.utils.runtime.ensure_vllm_binary",
-        lambda _: "/usr/local/bin/vllm",
-    )
+def test_factory_builds_vllm_runtime() -> None:
     config = AppConfig(
         project=ProjectConfig(name="demo", data_dir=Path("data")),
         crawl=CrawlConfig(
@@ -63,29 +59,22 @@ def test_factory_selects_vllm_backend(monkeypatch) -> None:
         llm=VLLMConfig(
             backend="vllm",
             model_name="Qwen/Qwen3-8B",
-            binary_path="/opt/vllm-0.21.0/bin/vllm",
         ),
     )
 
-    backend = create_llm_backend(config)
+    runtime = create_llm_runtime(config)
 
-    assert isinstance(backend, VLLMBackend)
-
-
-def test_ensure_vllm_binary_accepts_explicit_path(tmp_path) -> None:
-    from sustech_rag.utils.runtime import ensure_vllm_binary
-
-    binary = tmp_path / "vllm"
-    binary.write_text("#!/bin/sh\n", encoding="utf-8")
-
-    assert ensure_vllm_binary(str(binary)) == str(binary.resolve())
+    assert isinstance(runtime.client, VLLMClient)
+    assert isinstance(runtime.launcher, VLLMLauncher)
 
 
 def test_vllm_runtime_args_include_multi_gpu_options() -> None:
-    backend = object.__new__(VLLMBackend)
-    backend._host = "127.0.0.1"
-    backend._port = 8081
-    backend._vllm = VLLMConfig(
+    client = object.__new__(VLLMClient)
+    client.model_ref = "Qwen/Qwen3-32B"
+    client._served_model_name = "qwen3-32b"
+    launcher = object.__new__(VLLMLauncher)
+    launcher._client = client
+    launcher._vllm = VLLMConfig(
         model_name="Qwen/Qwen3-32B",
         served_model_name="qwen3-32b",
         dtype="float16",
@@ -103,7 +92,7 @@ def test_vllm_runtime_args_include_multi_gpu_options() -> None:
         max_parallel_loading_workers=4,
     )
 
-    args = backend._build_runtime_args()
+    args = launcher._build_runtime_args()
 
     assert "--tensor-parallel-size" in args
     assert args[args.index("--tensor-parallel-size") + 1] == "4"

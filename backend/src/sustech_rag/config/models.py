@@ -79,7 +79,6 @@ class VLLMConfig(LLMSharedConfig):
     backend: Literal["vllm"] = "vllm"
     model_name: str = ""
     local_path: str = ""
-    binary_path: str = ""
     served_model_name: str = ""
     dtype: str = "auto"
     gpu_memory_utilization: float = 0.92

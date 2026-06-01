@@ -48,7 +48,7 @@ def _bootstrap_rag(app: FastAPI, config: AppConfig) -> None:
             return
 
         # 预热并常驻启动 LLM，供后续请求复用。
-        rag.llm.start()
+        rag.llm_launcher.start()
         app.state.ready = True
         app.state.startup_error = ""
         print("[sustech-rag] all components ready; serving requests.", flush=True)
@@ -82,7 +82,7 @@ def create_app(config: AppConfig, startup_in_background: bool = True) -> FastAPI
         # 关闭时回收常驻的 llama-server 进程。
         rag = getattr(app.state, "rag", None)
         if rag is not None:
-            rag.llm.shutdown()
+            rag.llm_launcher.shutdown()
 
     app = FastAPI(
         title="SUSTech Campus RAG API",

@@ -12,120 +12,20 @@ import httpx
 from sustech_rag.config.models import AppConfig, LlamaCppConfig
 
 
-class LlamaCppBackend:
-    """Persistent llama.cpp backend using llama-server HTTP API.
-
-    Starts *llama-server* once so the GGUF model stays loaded in memory.
-    Subsequent ``generate()`` calls use the OpenAI-compatible ``/v1/completions`` endpoint.
-    """
+class LlamaCppClient:
+    """OpenAI-compatible llama.cpp client; does not manage the server process."""
 
     def __init__(self, config: AppConfig) -> None:
-        from sustech_rag.utils.runtime import ensure_gguf_model, ensure_llama_cpp_binary
-
         if not isinstance(config.llm, LlamaCppConfig):
-            raise TypeError("LlamaCppBackend requires a llama_cpp configuration.")
+            raise TypeError("LlamaCppClient requires a llama_cpp configuration.")
         local = config.llm
-        self.binary = ensure_llama_cpp_binary()
-        self.model_path = ensure_gguf_model(local.model_path)
-        self._device_mode = local.device_mode
-        self._device_name = local.device_name
-        self._gpu_layers = local.gpu_layers
-        self._threads = local.threads
-        self._threads_batch = local.threads_batch
-        self._reasoning = local.reasoning
-        self._n_ctx = local.n_ctx
         self._temperature = local.temperature
         self._max_tokens = local.max_tokens
         self._stop = local.stop
-        self._extra_args = local.extra_args
         self._host = "127.0.0.1"
         self._port = local.server_port
-        self._proc: subprocess.Popen | None = None
-
-    # -- lifecycle ----------------------------------------------------------
-
-    def start(self) -> None:
-        """Launch llama-server and wait until /health responds, then warm-up."""
-        self._start_process()
-        print("[sustech-rag] warm-up inference ...", flush=True)
-        result = self.generate("Hello.")
-        print(f"[sustech-rag] model hot & ready (warm-up: {len(result)} chars)", flush=True)
-
-    def _start_process(self) -> None:
-        cmd = [self.binary]
-        cmd.extend(self._build_runtime_args())
-        cmd.extend([
-            "-m", self.model_path,
-            "--host", self._host,
-            "--port", str(self._port),
-            "-c", str(self._n_ctx),
-        ])
-        cmd.extend(self._extra_args)
-        print(f"[sustech-rag] starting llama-server on {self._host}:{self._port} ...", flush=True)
-        self._proc = subprocess.Popen(
-            cmd,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        self._wait_until_ready()
-
-    def _wait_until_ready(self, timeout: float = 120) -> None:
-        """Poll /health until the server responds OK."""
-        deadline = time.time() + timeout
-        attempts = 0
-        last_error: str | None = None
-        while time.time() < deadline:
-            if self._proc is not None and self._proc.poll() is not None:
-                raise RuntimeError(
-                    "llama-server exited unexpectedly. "
-                    "Check the process output above for diagnostics."
-                )
-            try:
-                resp = httpx.get(
-                    f"http://{self._host}:{self._port}/health", timeout=2
-                )
-                if resp.status_code == 200:
-                    print("[sustech-rag] llama-server is ready.", flush=True)
-                    return
-            except httpx.RequestError as exc:
-                last_error = str(exc)
-            attempts += 1
-            time.sleep(0.5)
-        msg = f"llama-server did not become ready within {timeout}s (polled {attempts} times"
-        if last_error:
-            msg += f", last error: {last_error}"
-        msg += ")"
-        raise RuntimeError(msg)
-
-    def shutdown(self) -> None:
-        proc = self._proc
-        if proc is None:
-            return
-        try:
-            proc.terminate()
-            proc.wait(timeout=10)
-        except Exception:
-            proc.kill()
-        self._proc = None
-
-    # -- verify -------------------------------------------------------------
-
-    def verify(self) -> tuple[bool, str]:
-        if not Path(self.binary).exists():
-            return False, f"llama-server binary not found: {self.binary}"
-        if not self.model_path:
-            return False, "llama.cpp model path is not configured"
-        if not Path(self.model_path).exists():
-            return False, f"GGUF model not found: {self.model_path}"
-        return True, "ok"
-
-    # -- generate -----------------------------------------------------------
 
     def generate(self, prompt: str) -> str:
-        if self._proc is None or self._proc.poll() is not None:
-            raise RuntimeError("llama-server is not running")
-
         payload: dict = {
             "prompt": prompt,
             "temperature": self._temperature,
@@ -151,10 +51,6 @@ class LlamaCppBackend:
         messages: list[dict],
         cancel_event: threading.Event | None = None,
     ) -> Iterator[tuple[str, str]]:
-        """Stream via /v1/chat/completions; yields ("think", text) or ("content", text)."""
-        if self._proc is None or self._proc.poll() is not None:
-            raise RuntimeError("llama-server is not running")
-
         payload: dict = {
             "messages": messages,
             "temperature": self._temperature,
@@ -191,7 +87,6 @@ class LlamaCppBackend:
                             if text:
                                 yield ("content", text)
                     except json.JSONDecodeError:
-                        # malformed SSE data line — log a short snippet for diagnostics
                         printable = data_str[:120]
                         print(
                             f"[sustech-rag] skipped malformed SSE JSON: {printable}",
@@ -201,7 +96,103 @@ class LlamaCppBackend:
         except httpx.HTTPError as exc:
             raise RuntimeError(f"llama-server stream request failed: {exc}") from exc
 
-    # -- helpers ------------------------------------------------------------
+    def probe_ready(self) -> bool:
+        resp = httpx.get(f"http://{self._host}:{self._port}/health", timeout=2)
+        return resp.status_code == 200
+
+
+class LlamaCppLauncher:
+    """Managed llama.cpp launcher; keeps warm-up behavior here."""
+
+    def __init__(self, config: AppConfig, client: LlamaCppClient) -> None:
+        from sustech_rag.utils.runtime import ensure_gguf_model, ensure_llama_cpp_binary
+
+        if not isinstance(config.llm, LlamaCppConfig):
+            raise TypeError("LlamaCppLauncher requires a llama_cpp configuration.")
+        local = config.llm
+        self.binary = ensure_llama_cpp_binary()
+        self.model_path = ensure_gguf_model(local.model_path)
+        self._client = client
+        self._device_mode = local.device_mode
+        self._device_name = local.device_name
+        self._gpu_layers = local.gpu_layers
+        self._threads = local.threads
+        self._threads_batch = local.threads_batch
+        self._reasoning = local.reasoning
+        self._n_ctx = local.n_ctx
+        self._extra_args = local.extra_args
+        self._host = "127.0.0.1"
+        self._port = local.server_port
+        self._proc: subprocess.Popen | None = None
+
+    def start(self) -> None:
+        self._start_process()
+        print("[sustech-rag] warm-up inference ...", flush=True)
+        result = self._client.generate("Hello.")
+        print(f"[sustech-rag] model hot & ready (warm-up: {len(result)} chars)", flush=True)
+
+    def shutdown(self) -> None:
+        proc = self._proc
+        if proc is None:
+            return
+        try:
+            proc.terminate()
+            proc.wait(timeout=10)
+        except Exception:
+            proc.kill()
+        self._proc = None
+
+    def verify(self) -> tuple[bool, str]:
+        if not Path(self.binary).exists():
+            return False, f"llama-server binary not found: {self.binary}"
+        if not self.model_path:
+            return False, "llama.cpp model path is not configured"
+        if not Path(self.model_path).exists():
+            return False, f"GGUF model not found: {self.model_path}"
+        return True, "ok"
+
+    def _start_process(self) -> None:
+        cmd = [self.binary]
+        cmd.extend(self._build_runtime_args())
+        cmd.extend([
+            "-m", self.model_path,
+            "--host", self._host,
+            "--port", str(self._port),
+            "-c", str(self._n_ctx),
+        ])
+        cmd.extend(self._extra_args)
+        print(f"[sustech-rag] starting llama-server on {self._host}:{self._port} ...", flush=True)
+        self._proc = subprocess.Popen(
+            cmd,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        self._wait_until_ready()
+
+    def _wait_until_ready(self, timeout: float = 120) -> None:
+        deadline = time.time() + timeout
+        attempts = 0
+        last_error: str | None = None
+        while time.time() < deadline:
+            if self._proc is not None and self._proc.poll() is not None:
+                raise RuntimeError(
+                    "llama-server exited unexpectedly. "
+                    "Check the process output above for diagnostics."
+                )
+            try:
+                if self._client.probe_ready():
+                    print("[sustech-rag] llama-server is ready.", flush=True)
+                    return
+            except httpx.RequestError as exc:
+                last_error = str(exc)
+            attempts += 1
+            time.sleep(0.5)
+        msg = f"llama-server did not become ready within {timeout}s (polled {attempts} times"
+        if last_error:
+            msg += f", last error: {last_error}"
+        msg += ")"
+        raise RuntimeError(msg)
 
     def _build_runtime_args(self) -> list[str]:
         args: list[str] = []
@@ -230,8 +221,6 @@ class LlamaCppBackend:
         if mode == "cpu":
             return "none"
         if mode == "metal":
-            # llama.cpp's Metal backend is selected implicitly on macOS when GPU
-            # layers are enabled; recent builds reject "--device metal".
             return None
         if mode == "custom":
             if not self._device_name:

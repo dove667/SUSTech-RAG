@@ -58,6 +58,4 @@ def load_config(config_path: str | None = None) -> AppConfig:
     if isinstance(config.llm, VLLMConfig):
         if config.llm.local_path:
             config.llm.local_path = _resolve_path_value(config.llm.local_path, project_root)
-        if config.llm.binary_path:
-            config.llm.binary_path = _resolve_path_value(config.llm.binary_path, project_root)
     return config

@@ -1,6 +1,11 @@
-"""LLM backends."""
+"""LLM clients and launchers."""
 
-from sustech_rag.llm.base import LLMBackend
-from sustech_rag.llm.factory import create_llm_backend
+from sustech_rag.llm.base import LLMClient, LLMLauncher, LLMRuntime
+from sustech_rag.llm.factory import create_llm_runtime
 
-__all__ = ["LLMBackend", "create_llm_backend"]
+__all__ = [
+    "LLMClient",
+    "LLMLauncher",
+    "LLMRuntime",
+    "create_llm_runtime",
+]

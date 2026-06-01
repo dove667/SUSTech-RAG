@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
+import sys
 import threading
 import time
 from collections.abc import Iterator
@@ -11,17 +13,13 @@ import httpx
 from sustech_rag.config.models import AppConfig, VLLMConfig
 
 
-class VLLMBackend:
-    """Persistent vLLM backend using the OpenAI-compatible HTTP server."""
+class VLLMClient:
+    """OpenAI-compatible vLLM client; does not manage the server process."""
 
     def __init__(self, config: AppConfig) -> None:
-        from sustech_rag.utils.runtime import ensure_vllm_binary
-
-        self._config = config
         if not isinstance(config.llm, VLLMConfig):
-            raise TypeError("VLLMBackend requires a vllm configuration.")
+            raise TypeError("VLLMClient requires a vllm configuration.")
         self._vllm = config.llm
-        self.binary = ensure_vllm_binary(self._vllm.binary_path)
         self.model_ref = self._resolve_model_ref(self._vllm)
         self._served_model_name = self._vllm.served_model_name or self.model_ref
         self._temperature = self._vllm.temperature
@@ -29,69 +27,6 @@ class VLLMBackend:
         self._stop = self._vllm.stop
         self._host = "127.0.0.1"
         self._port = self._vllm.server_port
-        self._proc: subprocess.Popen | None = None
-
-    def start(self) -> None:
-        self._start_process()
-        print("[sustech-rag] vLLM warm-up inference ...", flush=True)
-        result = self.generate("Hello.")
-        print(f"[sustech-rag] vLLM ready (warm-up: {len(result)} chars)", flush=True)
-
-    def _start_process(self) -> None:
-        cmd = [self.binary, "serve", self.model_ref]
-        cmd.extend(self._build_runtime_args())
-        print(
-            f"[sustech-rag] starting vLLM server on {self._host}:{self._port} "
-            f"for model {self._served_model_name} ...",
-            flush=True,
-        )
-        self._proc = subprocess.Popen(
-            cmd,
-            stdin=subprocess.DEVNULL,
-        )
-        self._wait_until_ready()
-
-    def _wait_until_ready(self, timeout: float = 300) -> None:
-        deadline = time.time() + timeout
-        attempts = 0
-        last_error: str | None = None
-        while time.time() < deadline:
-            if self._proc is not None and self._proc.poll() is not None:
-                raise RuntimeError(
-                    "vLLM server exited unexpectedly. "
-                    "Check the process output above for diagnostics."
-                )
-            try:
-                if self._probe_ready():
-                    print("[sustech-rag] vLLM server is ready.", flush=True)
-                    return
-            except httpx.RequestError as exc:
-                last_error = str(exc)
-            attempts += 1
-            time.sleep(1.0)
-        msg = f"vLLM did not become ready within {timeout}s (polled {attempts} times"
-        if last_error:
-            msg += f", last error: {last_error}"
-        msg += ")"
-        raise RuntimeError(msg)
-
-    def shutdown(self) -> None:
-        proc = self._proc
-        if proc is None:
-            return
-        try:
-            proc.terminate()
-            proc.wait(timeout=20)
-        except Exception:
-            proc.kill()
-        self._proc = None
-
-    def verify(self) -> tuple[bool, str]:
-        if not self.binary:
-            return False, "vLLM CLI is not configured"
-        if not self.model_ref:
-            return False, "vLLM model_name or local_path must be configured"
-        return True, "ok"
 
     def generate(self, prompt: str) -> str:
         payload: dict[str, object] = {
@@ -174,13 +109,119 @@ class VLLMBackend:
         except httpx.HTTPError as exc:
             raise RuntimeError(f"vLLM stream request failed: {exc}") from exc
 
+    def probe_ready(self) -> bool:
+        health = httpx.get(
+            f"http://{self._host}:{self._port}/health",
+            timeout=2,
+            headers=self._auth_headers(),
+        )
+        if health.status_code == 200:
+            return True
+
+        models = httpx.get(
+            f"http://{self._host}:{self._port}/v1/models",
+            timeout=2,
+            headers=self._auth_headers(),
+        )
+        return models.status_code == 200
+
+    def _auth_headers(self) -> dict[str, str]:
+        if not self._vllm.api_key:
+            return {}
+        return {"Authorization": f"Bearer {self._vllm.api_key}"}
+
+    @staticmethod
+    def _resolve_model_ref(config: VLLMConfig) -> str:
+        model_ref = config.local_path or config.model_name
+        if not model_ref:
+            raise ValueError("vLLM backend requires llm.model_name or llm.local_path.")
+        return model_ref
+
+
+class VLLMLauncher:
+    """Launch vLLM in the current Python environment."""
+
+    _ENTRYPOINT = "vllm.entrypoints.openai.api_server"
+
+    def __init__(self, config: AppConfig, client: VLLMClient) -> None:
+        if not isinstance(config.llm, VLLMConfig):
+            raise TypeError("VLLMLauncher requires a vllm configuration.")
+        self._vllm = config.llm
+        self._client = client
+        self._proc: subprocess.Popen | None = None
+
+    def verify(self) -> tuple[bool, str]:
+        if not self._client.model_ref:
+            return False, "vLLM model_name or local_path must be configured"
+        if importlib.util.find_spec("vllm") is None:
+            return False, "vLLM is not installed in the current environment"
+        return True, "ok"
+
+    def start(self) -> None:
+        self._start_process()
+
+    def shutdown(self) -> None:
+        proc = self._proc
+        if proc is None:
+            return
+        try:
+            proc.terminate()
+            proc.wait(timeout=20)
+        except Exception:
+            proc.kill()
+        self._proc = None
+
+    def _start_process(self) -> None:
+        cmd = [
+            sys.executable,
+            "-m",
+            self._ENTRYPOINT,
+            "--model",
+            self._client.model_ref,
+        ]
+        cmd.extend(self._build_runtime_args())
+        print(
+            f"[sustech-rag] starting vLLM server on 127.0.0.1:{self._vllm.server_port} "
+            f"for model {self._client._served_model_name} ...",
+            flush=True,
+        )
+        self._proc = subprocess.Popen(
+            cmd,
+            stdin=subprocess.DEVNULL,
+        )
+        self._wait_until_ready()
+
+    def _wait_until_ready(self, timeout: float = 300) -> None:
+        deadline = time.time() + timeout
+        attempts = 0
+        last_error: str | None = None
+        while time.time() < deadline:
+            if self._proc is not None and self._proc.poll() is not None:
+                raise RuntimeError(
+                    "vLLM server exited unexpectedly. "
+                    "Check the process output above for diagnostics."
+                )
+            try:
+                if self._client.probe_ready():
+                    print("[sustech-rag] vLLM server is ready.", flush=True)
+                    return
+            except httpx.RequestError as exc:
+                last_error = str(exc)
+            attempts += 1
+            time.sleep(1.0)
+        msg = f"vLLM did not become ready within {timeout}s (polled {attempts} times"
+        if last_error:
+            msg += f", last error: {last_error}"
+        msg += ")"
+        raise RuntimeError(msg)
+
     def _build_runtime_args(self) -> list[str]:
         cfg = self._vllm
         args = [
             "--host",
-            self._host,
+            "127.0.0.1",
             "--port",
-            str(self._port),
+            str(cfg.server_port),
             "--dtype",
             cfg.dtype,
             "--gpu-memory-utilization",
@@ -224,31 +265,3 @@ class VLLMBackend:
             )
         args.extend(cfg.extra_args)
         return args
-
-    def _probe_ready(self) -> bool:
-        health = httpx.get(
-            f"http://{self._host}:{self._port}/health",
-            timeout=2,
-            headers=self._auth_headers(),
-        )
-        if health.status_code == 200:
-            return True
-
-        models = httpx.get(
-            f"http://{self._host}:{self._port}/v1/models",
-            timeout=2,
-            headers=self._auth_headers(),
-        )
-        return models.status_code == 200
-
-    def _auth_headers(self) -> dict[str, str]:
-        if not self._vllm.api_key:
-            return {}
-        return {"Authorization": f"Bearer {self._vllm.api_key}"}
-
-    @staticmethod
-    def _resolve_model_ref(config: VLLMConfig) -> str:
-        model_ref = config.local_path or config.model_name
-        if not model_ref:
-            raise ValueError("vLLM backend requires llm.model_name or llm.local_path.")
-        return model_ref

@@ -59,7 +59,6 @@ def test_load_vllm_config_preserves_absolute_and_home_paths(
             "backend": "vllm",
             "model_name": "",
             "local_path": str(absolute_model_dir),
-            "binary_path": "~/miniconda3/envs/vllm-0.21/bin/vllm",
         },
     }
     config_path = config_dir / "vllm.yaml"
@@ -73,6 +72,3 @@ def test_load_vllm_config_preserves_absolute_and_home_paths(
     assert config.retrieval.reranker_device == "cuda:2"
     assert config.retrieval.reranker_dtype == "bf16"
     assert config.llm.local_path == str(absolute_model_dir.resolve())
-    assert config.llm.binary_path == str(
-        (home_dir / "miniconda3" / "envs" / "vllm-0.21" / "bin" / "vllm").resolve()
-    )

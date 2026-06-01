@@ -55,7 +55,6 @@ llm:
   server_port: 8081
   model_name: "Qwen/Qwen3-30B-A3B-Instruct-2507-AWQ"
   local_path: "/data1/zsh/models/Qwen3-30B-A3B-Instruct-2507-AWQ"
-  binary_path: ""
   served_model_name: "qwen3-30b-a3b-instruct-2507-awq"
   dtype: "auto"
   gpu_memory_utilization: 0.82

@@ -101,12 +101,12 @@ def query(
 @app.command()
 def serve(
     host: str = typer.Option("0.0.0.0", help="Bind host."),
-    port: int = typer.Option(8000, help="Bind port."),
+    port: int = typer.Option(8001, help="Bind port."),
     config: str = typer.Option(None, help="Path to YAML config file."),
 ) -> None:
     """
     启动与前端 WebUI 对接的 HTTP API（FastAPI + SSE）。
-    默认与仓库内前端 Vite 代理一致：后端 8000，前端将 /api 转发到此服务。
+    默认与仓库内前端 Vite 代理一致：后端 8001，前端将 /api 转发到此服务。
     """
     from sustech_rag.api.app import run_dev_server
 

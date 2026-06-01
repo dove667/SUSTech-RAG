@@ -4,6 +4,7 @@ import { RouterLink } from 'vue-router';
 import { useChat } from '@/stores/chat.js';
 import { useSettings } from '@/stores/settings.js';
 import { showConfirm } from '@/utils/confirm.js';
+import { buildApiUrl, fetchWithTimeout } from '@/utils/api.js';
 import ChatWindow from '@/components/ChatWindow.vue';
 import ChatInput from '@/components/ChatInput.vue';
 import LogoIcon from '@/components/LogoIcon.vue';
@@ -17,10 +18,14 @@ const backendMessage = ref('');
 async function checkHealth() {
   backendStatus.value = 'checking';
   try {
-    const base = settings.apiBaseUrl || '/api';
-    const res = await fetch(`${base.replace(/\/$/, '')}/health`);
+    const res = await fetchWithTimeout(
+      buildApiUrl(settings.apiBaseUrl, '/health'),
+      {},
+      5000,
+    );
     if (res.ok) {
       backendStatus.value = 'ready';
+      backendMessage.value = '';
     } else {
       backendStatus.value = 'error';
       try {
@@ -30,9 +35,11 @@ async function checkHealth() {
         backendMessage.value = res.statusText;
       }
     }
-  } catch {
+  } catch (err) {
     backendStatus.value = 'error';
-    backendMessage.value = '无法连接到后端服务';
+    backendMessage.value = err instanceof DOMException && err.name === 'AbortError'
+      ? '后端启动中或接口无响应'
+      : '无法连接到后端服务';
   }
 }
 

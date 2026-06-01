@@ -86,7 +86,7 @@ def client(monkeypatch: pytest.MonkeyPatch, config_yaml: str):
             yield ("content.delta", "lo")
 
     monkeypatch.setattr("sustech_rag.api.app.RagService", FakeRag)
-    with TestClient(create_app(load_config(config_yaml))) as tc:
+    with TestClient(create_app(load_config(config_yaml), startup_in_background=False)) as tc:
         yield tc
 
 

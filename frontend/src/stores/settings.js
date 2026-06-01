@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { applyTheme, getPresetVars, PRESETS, THEME_VARS } from '@/styles/themes.js';
+import { normalizeApiBaseUrl } from '@/utils/api.js';
 
 const STORAGE_KEY = 'ragwebui:settings:v1';
 
@@ -34,7 +35,11 @@ function loadFromStorage() {
 }
 
 export const useSettings = defineStore('settings', {
-  state: () => ({ ...DEFAULTS(), ...loadFromStorage() }),
+  state: () => {
+    const state = { ...DEFAULTS(), ...loadFromStorage() };
+    state.apiBaseUrl = normalizeApiBaseUrl(state.apiBaseUrl);
+    return state;
+  },
 
   getters: {
     /** The computed set of CSS variables after applying preset + overrides. */
@@ -57,6 +62,7 @@ export const useSettings = defineStore('settings', {
       applyTheme(this.themeVars);
     },
     persist() {
+      this.apiBaseUrl = normalizeApiBaseUrl(this.apiBaseUrl);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(this.$state));
     },
     setPreset(id) {
@@ -84,6 +90,9 @@ export const useSettings = defineStore('settings', {
       this.persist();
     },
     update(patch) {
+      if (Object.prototype.hasOwnProperty.call(patch, 'apiBaseUrl')) {
+        patch = { ...patch, apiBaseUrl: normalizeApiBaseUrl(patch.apiBaseUrl) };
+      }
       Object.assign(this, patch);
       this.persist();
     },

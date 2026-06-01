@@ -3,6 +3,7 @@ import { onMounted, onUnmounted, watch } from 'vue';
 import { RouterView, useRoute, useRouter } from 'vue-router';
 import { useSettings, bindSystemThemeWatcher } from '@/stores/settings.js';
 import ConfirmModal from '@/components/ConfirmModal.vue';
+import { buildApiUrl, fetchWithTimeout } from '@/utils/api.js';
 
 const settings = useSettings();
 const route = useRoute();
@@ -30,9 +31,9 @@ onMounted(async () => {
   // 初始化身份 ID：没有或为空则向后端申请
   if (!settings.identityId) {
     try {
-      const res = await fetch(`${settings.apiBaseUrl.replace(/\/$/, '')}/identity`, {
+      const res = await fetchWithTimeout(buildApiUrl(settings.apiBaseUrl, '/identity'), {
         method: 'POST',
-      });
+      }, 5000);
       if (res.ok) {
         const data = await res.json();
         settings.identityId = data.identity_id;

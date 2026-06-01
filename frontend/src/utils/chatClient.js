@@ -1,4 +1,5 @@
 import { parseSSE } from './sse.js';
+import { buildApiUrl, fetchWithTimeout } from './api.js';
 
 /**
  * Streaming chat client.  Consumers call `chat({...}, handlers)` where
@@ -13,7 +14,7 @@ export function chat({ settings, messages, conversationId, signal }, handlers) {
   if (signal) signal.addEventListener('abort', () => ctrl.abort());
 
   const run = async () => {
-    const url = joinUrl(settings.apiBaseUrl, '/chat/completions');
+    const url = buildApiUrl(settings.apiBaseUrl, '/chat/completions');
     const body = {
       conversation_id: conversationId,
       messages,
@@ -29,7 +30,7 @@ export function chat({ settings, messages, conversationId, signal }, handlers) {
 
     let res;
     try {
-      res = await fetch(url, {
+      res = await fetchWithTimeout(url, {
         method: 'POST',
         signal: innerSignal,
         headers: {
@@ -38,12 +39,14 @@ export function chat({ settings, messages, conversationId, signal }, handlers) {
           ...(settings.identityId ? { 'X-Identity-ID': settings.identityId } : {}),
         },
         body: JSON.stringify(body),
-      });
+      }, 15000);
     } catch (err) {
       if (innerSignal.aborted) return;
       handlers.onError?.({
         code: 'network_error',
-        message: err instanceof Error ? err.message : String(err),
+        message: err instanceof DOMException && err.name === 'AbortError'
+          ? '连接后端超时，请确认后端已经完成启动'
+          : err instanceof Error ? err.message : String(err),
       });
       return;
     }
@@ -103,9 +106,4 @@ function dispatch(event, data, h) {
     case 'done':          return h.onDone?.(data);
     case 'error':         return h.onError?.(data);
   }
-}
-
-function joinUrl(base, path) {
-  if (!base) return path;
-  return `${base.replace(/\/$/, '')}${path.startsWith('/') ? path : `/${path}`}`;
 }

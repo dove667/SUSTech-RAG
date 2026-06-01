@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -25,40 +26,63 @@ def _cors_origins() -> list[str]:
     return defaults
 
 
-def create_app(config: AppConfig) -> FastAPI:
+def _bootstrap_rag(app: FastAPI, config: AppConfig) -> None:
+    """在应用生命周期外完成耗时初始化，避免整个 API 在启动阶段卡死。"""
+    print("[sustech-rag] loading config...", flush=True)
+    print(
+        "[sustech-rag] loading RAG "
+        "(embedding + Chroma + reranker; first run may take minutes)...",
+        flush=True,
+    )
+    try:
+        rag = RagService(config)
+        app.state.rag = rag
+
+        print("[sustech-rag] running health checks...", flush=True)
+        health = rag.health_check()
+        if health["status"] != "ready":
+            msg = f"Startup health check failed: {health['components']}"
+            print(f"[sustech-rag] ERROR: {msg}", flush=True)
+            app.state.startup_error = msg
+            app.state.ready = False
+            return
+
+        # 预热并常驻启动 LLM，供后续请求复用。
+        rag.llm.start()
+        app.state.ready = True
+        app.state.startup_error = ""
+        print("[sustech-rag] all components ready; serving requests.", flush=True)
+    except Exception as exc:
+        msg = f"RAG service init failed: {exc}"
+        app.state.startup_error = msg
+        app.state.ready = False
+        print(f"[sustech-rag] FATAL: {msg}", flush=True)
+
+
+def create_app(config: AppConfig, startup_in_background: bool = True) -> FastAPI:
     """根据已加载配置构建 FastAPI 应用。"""
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        print("[sustech-rag] loading config...", flush=True)
         app.state.app_config = config
-        print(
-            "[sustech-rag] loading RAG "
-            "(embedding + Chroma + reranker; first run may take minutes)...",
-            flush=True,
-        )
-        try:
-            app.state.rag = RagService(config)
-        except Exception as exc:
-            msg = f"RAG service init failed: {exc}"
-            print(f"[sustech-rag] FATAL: {msg}", flush=True)
-            raise RuntimeError(msg) from exc
+        app.state.rag = None
+        app.state.ready = False
+        app.state.startup_error = "startup in progress"
 
-        print("[sustech-rag] running health checks...", flush=True)
-        health = app.state.rag.health_check()
-        if health["status"] != "ready":
-            app.state.ready = False
-            msg = f"Startup health check failed: {health['components']}"
-            print(f"[sustech-rag] ERROR: {msg}", flush=True)
-            raise RuntimeError(msg)
-
-        # 预热并常驻启动 LLM，供后续请求复用。
-        app.state.rag.llm.start()
-        app.state.ready = True
-        print("[sustech-rag] all components ready; serving requests.", flush=True)
+        if startup_in_background:
+            threading.Thread(
+                target=_bootstrap_rag,
+                args=(app, config),
+                daemon=True,
+                name="sustech-rag-bootstrap",
+            ).start()
+        else:
+            _bootstrap_rag(app, config)
         yield
         # 关闭时回收常驻的 llama-server 进程。
-        app.state.rag.llm.shutdown()
+        rag = getattr(app.state, "rag", None)
+        if rag is not None:
+            rag.llm.shutdown()
 
     app = FastAPI(
         title="SUSTech Campus RAG API",
@@ -91,7 +115,7 @@ def create_app(config: AppConfig) -> FastAPI:
 def run_dev_server(
     config: AppConfig,
     host: str = "0.0.0.0",
-    port: int = 8000,
+    port: int = 8001,
 ) -> None:
     """使用当前进程内的应用实例启动开发服务器，供 CLI `serve` 调用。"""
     import uvicorn

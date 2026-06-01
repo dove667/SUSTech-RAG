@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { useSettings } from './settings.js';
 import { chat as chatStream } from '@/utils/chatClient.js';
+import { buildApiUrl, fetchWithTimeout } from '@/utils/api.js';
 
 /**
  * A chat conversation is an ordered list of messages. Each message has:
@@ -230,14 +231,14 @@ export const useChat = defineStore('chat', {
       // 通知后端中断生成
       if (messageId) {
         const settings = useSettings();
-        fetch(`${settings.apiBaseUrl}/chat/cancel`, {
+        fetchWithTimeout(buildApiUrl(settings.apiBaseUrl, '/chat/cancel'), {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             ...(settings.identityId ? { 'X-Identity-ID': settings.identityId } : {}),
           },
           body: JSON.stringify({ message_id: messageId }),
-        }).catch(() => {});
+        }, 5000).catch(() => {});
       }
       this.persist();
     },

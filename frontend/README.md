@@ -20,7 +20,7 @@ npm install
 npm run dev
 ```
 
-默认端口是 `3000`。开发环境下 `/api` 会由 Vite 代理到 `http://127.0.0.1:8000`。
+默认端口是 `3000`。开发环境下 `/api` 会由 Vite 代理到 `http://127.0.0.1:8001`。
 
 生产构建：
 
@@ -55,7 +55,7 @@ bash ../entrypoint.sh production
 
 ```bash
 cd ../backend
-uv run sustech-rag serve --host 127.0.0.1 --port 8000
+uv run sustech-rag serve --host 127.0.0.1 --port 8001
 ```
 
 再启动前端：
@@ -68,7 +68,7 @@ npm run dev
 设置页里的 `API Base URL` 默认是 `/api`。如果前端和后端不在同一个 origin，可以改成完整地址，例如：
 
 ```text
-http://127.0.0.1:8000/api
+http://127.0.0.1:8001/api
 ```
 
 后端 CORS 默认允许：

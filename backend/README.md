@@ -74,7 +74,7 @@ uv run sustech-rag serve --host 127.0.0.1 --port 8001
 也可以显式指定配置：
 
 ```bash
-uv run sustech-rag serve --host 127.0.0.1 --port 8001 --config /absolute/path/to/config.yaml
+uv run sustech-rag serve --host 127.0.0.1 --port 8001 --config configs/vllm.linux.yaml
 ```
 
 4 张 `RTX 4090` 的 `vLLM` 样例配置见 [configs/vllm.linux.example.yaml](configs/vllm.linux.example.yaml)。这份样例里，检索侧已经改成 `Qwen/Qwen3-Embedding-4B` 和 `Qwen/Qwen3-Reranker-4B`；本地默认配置 `configs/default.yaml` 仍然保持 BGE 组合。

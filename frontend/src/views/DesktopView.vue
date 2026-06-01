@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { RouterLink } from 'vue-router';
 import { useChat } from '@/stores/chat.js';
 import { useSettings } from '@/stores/settings.js';
@@ -14,9 +14,21 @@ const settings = useSettings();
 
 const backendStatus = ref('checking'); // 'checking' | 'ready' | 'error'
 const backendMessage = ref('');
+let healthTimer = null;
+
+function scheduleHealthCheck(delayMs = 3000) {
+  if (backendStatus.value === 'ready') return;
+  if (healthTimer) window.clearTimeout(healthTimer);
+  healthTimer = window.setTimeout(() => {
+    healthTimer = null;
+    checkHealth();
+  }, delayMs);
+}
 
 async function checkHealth() {
-  backendStatus.value = 'checking';
+  if (backendStatus.value !== 'ready') {
+    backendStatus.value = 'checking';
+  }
   try {
     const res = await fetchWithTimeout(
       buildApiUrl(settings.apiBaseUrl, '/health'),
@@ -26,26 +38,50 @@ async function checkHealth() {
     if (res.ok) {
       backendStatus.value = 'ready';
       backendMessage.value = '';
-    } else {
-      backendStatus.value = 'error';
-      try {
-        const data = await res.json();
-        backendMessage.value = data.message || res.statusText;
-      } catch {
-        backendMessage.value = res.statusText;
+      if (healthTimer) {
+        window.clearTimeout(healthTimer);
+        healthTimer = null;
       }
+      return;
     }
+
+    let message = res.statusText;
+    try {
+      const data = await res.json();
+      message = data.message || res.statusText;
+    } catch {
+      // keep status text
+    }
+
+    if (res.status === 503 && /startup|not ready|initializing|components not ready/i.test(message)) {
+      backendStatus.value = 'checking';
+      backendMessage.value = message;
+      scheduleHealthCheck();
+      return;
+    }
+
+    backendStatus.value = 'error';
+    backendMessage.value = message;
+    scheduleHealthCheck(5000);
   } catch (err) {
     backendStatus.value = 'error';
     backendMessage.value = err instanceof DOMException && err.name === 'AbortError'
       ? '后端启动中或接口无响应'
       : '无法连接到后端服务';
+    scheduleHealthCheck(5000);
   }
 }
 
 onMounted(() => {
   chat.ensureActive();
   checkHealth();
+});
+
+onBeforeUnmount(() => {
+  if (healthTimer) {
+    window.clearTimeout(healthTimer);
+    healthTimer = null;
+  }
 });
 
 const list = computed(() => chat.conversations);

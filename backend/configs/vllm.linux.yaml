@@ -1,0 +1,79 @@
+project:
+  name: sustech-campus-rag
+  data_dir: data
+
+crawl:
+  user_agent: "Mozilla/5.0 (compatible; SUSTechCampusRAG/0.1; +https://www.sustech.edu.cn/)"
+  seed_urls:
+    - "https://www.sustech.edu.cn/"
+  allowed_domains:
+    - "sustech.edu.cn"
+  max_pages: 200
+  timeout_seconds: 20
+  include_pdf_links: false
+
+processing:
+  min_text_length: 60
+  max_repeated_line_ratio: 0.35
+  drop_patterns:
+    - "版权所有"
+    - "Copyright"
+    - "All Rights Reserved"
+    - "ICP备"
+  chunk_size: 500
+  chunk_overlap: 100
+
+embedding:
+  model_name: "Qwen/Qwen3-Embedding-4B"
+  local_path: "/data1/zsh/models/Qwen3-Embedding-4B"
+  batch_size: 4
+  device: "cuda:2"
+  dtype: "bfloat16"
+
+retrieval:
+  similarity_top_k: 8
+  sparse_top_k: 8
+  sparse_enabled: true
+  rerank_top_n: 4
+  reranker_model: "Qwen/Qwen3-Reranker-4B"
+  reranker_local_path: "/data1/zsh/models/Qwen3-Reranker-4B"
+  reranker_device: "cuda:2"
+  reranker_dtype: "bfloat16"
+
+vector_store:
+  persist_dir: "data/vector_store/chroma"
+  collection_name: "sustech-campus-kb-qwen3"
+
+llm:
+  backend: "vllm"
+  temperature: 0.2
+  max_tokens: 1024
+  max_concurrent_requests: 32
+  stop:
+    - "<|im_end|>"
+    - "<|endoftext|>"
+  server_port: 8081
+  model_name: "Qwen/Qwen3-30B-A3B-Instruct-2507-AWQ"
+  local_path: "/data1/zsh/models/Qwen3-30B-A3B-Instruct-2507-AWQ"
+  binary_path: ""
+  served_model_name: "qwen3-30b-a3b-instruct-2507-awq"
+  dtype: "auto"
+  gpu_memory_utilization: 0.82
+  tensor_parallel_size: 2
+  pipeline_parallel_size: 1
+  data_parallel_size: 1
+  distributed_executor_backend: "mp"
+  max_model_len: 32768
+  max_num_seqs: 32
+  max_num_batched_tokens: 12288
+  reasoning_parser: "qwen3"
+  api_key: ""
+  generation_config: "vllm"
+  trust_remote_code: false
+  enable_prefix_caching: true
+  enable_log_requests: false
+  disable_uvicorn_access_log: true
+  max_parallel_loading_workers: 2
+  extra_args:
+    - "--disable-custom-all-reduce"
+    - "--enforce-eager"

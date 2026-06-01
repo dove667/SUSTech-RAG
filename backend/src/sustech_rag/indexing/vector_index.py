@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from chromadb.errors import NotFoundError
 from llama_index.core import Document, StorageContext, VectorStoreIndex
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.vector_stores.chroma import ChromaVectorStore
@@ -52,8 +53,8 @@ def build_vector_index(config: AppConfig, rebuild: bool = False) -> VectorStoreI
     if rebuild:
         try:
             chroma_client.delete_collection(config.vector_store.collection_name)
-        except ValueError:
-            # Chroma raises when the collection does not exist yet.
+        except (ValueError, NotFoundError):
+            # Old/new Chroma versions differ on the missing-collection exception type.
             pass
     collection = chroma_client.get_or_create_collection(config.vector_store.collection_name)
     vector_store = ChromaVectorStore(chroma_collection=collection)

@@ -27,11 +27,13 @@ uv sync
 uv sync --extra dev
 ```
 
-Linux 服务器如果要启用 `vLLM`，请在独立的 CUDA 服务环境中单独安装：
+Linux 服务器如果要启用 `vLLM`，现在默认会随着 `uv sync` 一起安装：
 
 ```bash
-pip install vllm
+uv sync
 ```
+
+这里的 `vllm` 依赖已经写在 `pyproject.toml` 里，但只会在 `sys_platform == "linux"` 时安装；macOS 和 Windows 不会安装它。
 
 ## 数据管线
 
@@ -66,13 +68,13 @@ uv run sustech-rag query "南科大本科招生有什么特色？"
 启动 API 服务：
 
 ```bash
-uv run sustech-rag serve --host 127.0.0.1 --port 8000
+uv run sustech-rag serve --host 127.0.0.1 --port 8001
 ```
 
 也可以显式指定配置：
 
 ```bash
-uv run sustech-rag serve --host 127.0.0.1 --port 8000 --config /absolute/path/to/config.yaml
+uv run sustech-rag serve --host 127.0.0.1 --port 8001 --config /absolute/path/to/config.yaml
 ```
 
 4 张 `RTX 4090` 的 `vLLM` 样例配置见 [configs/vllm.linux.example.yaml](configs/vllm.linux.example.yaml)。这份样例里，检索侧已经改成 `Qwen/Qwen3-Embedding-4B` 和 `Qwen/Qwen3-Reranker-4B`；本地默认配置 `configs/default.yaml` 仍然保持 BGE 组合。
@@ -136,17 +138,19 @@ embedding/reranker/GGUF。若安装目录不在 PATH 中，llama.cpp 安装命�
 PATH 命令。后端运行时不会自动下载 GGUF；缺失时请先运行模型下载命令，或把
 `llm.model_path` 指向已有 GGUF 文件。
 
-`vLLM` 后端会从 PATH 查找 `vllm` CLI，也支持在配置里通过 `llm.binary_path` 指向另一个 conda 环境中的 `bin/vllm`，然后仍然由 `uv run sustech-rag serve` 一键拉起。推荐在 Linux/CUDA 环境中使用单机多卡张量并行；4 卡样例已在 `configs/vllm.linux.example.yaml` 给出。
+`vLLM` 后端会优先从当前环境的 PATH 查找 `vllm` CLI，因此在 Linux 服务器上通常直接 `uv sync && uv run sustech-rag serve` 就够了。若你确实想复用另一个环境中的 `vllm`，也仍然可以通过 `llm.binary_path` 手动指定。推荐在 Linux/CUDA 环境中使用单机多卡张量并行；4 卡样例已在 `configs/vllm.linux.example.yaml` 给出。
 
-如果你希望 backend 和 vLLM 在同一台机器、但分别处于不同 conda 环境，可以这样配置：
+如果你希望 backend 和 vLLM 在同一台 Linux 机器、并且直接共用当前环境，可以这样配置：
 
 ```yaml
 llm:
   backend: "vllm"
-  binary_path: "~/miniconda3/envs/vllm-0.21/bin/vllm"
+  binary_path: ""
   model_name: "Qwen/Qwen3.6-35B-A3B-FP8"
   tensor_parallel_size: 4
 ```
+
+如果你后面仍然想把 `vllm` 放回另一个环境，也可以把 `binary_path` 改成对应环境里的 `bin/vllm`。
 
 这样启动命令仍然只有一个：
 

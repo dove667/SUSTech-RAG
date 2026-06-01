@@ -3,7 +3,7 @@
 本文针对下面这类部署方式：
 
 - 同一台 Linux 服务器同时运行 `backend` 和 `vLLM`
-- `backend` 与 `vLLM` 使用不同的 conda 环境
+- `backend` 与 `vLLM` 默认共用同一个环境
 - 启动入口仍然只有一个：`uv run sustech-rag serve`
 - 目标机器：`4 * RTX 4090`
 - 目标模型：`Qwen/Qwen3.6-35B-A3B-FP8`
@@ -20,9 +20,8 @@
 
 职责分工：
 
-- `backend` conda 环境：安装本项目后端依赖、运行 `uv run sustech-rag serve`
-- `vllm-0.21` conda 环境：只安装 `vllm==0.21.0` 及其 CUDA 相关依赖
-- `app/backend/configs/vllm.linux.example.yaml`：告诉 backend 去启动 `vllm-0.21/bin/vllm`
+- `backend` 环境：安装本项目后端依赖，同时在 Linux 上自动安装 `vllm==0.21.0`
+- `app/backend/configs/vllm.linux.example.yaml`：告诉 backend 如何启动同环境中的 `vllm serve`
 
 ## 2. 准备 backend 环境
 
@@ -40,23 +39,16 @@ uv sync
 ```bash
 uv sync --extra dev
 ```
+在 Linux 上，`vllm==0.21.0` 已经通过 `pyproject.toml` 的平台条件依赖自动加入当前环境；在 macOS / Windows 上则不会安装。
 
-## 3. 准备 vLLM 环境
-
-```bash
-conda create -n vllm-0.21 python=3.11 -y
-conda activate vllm-0.21
-pip install -U pip
-pip install vllm==0.21.0
-```
-
-安装完成后，确认可执行文件存在：
+确认可执行文件存在：
 
 ```bash
-~/miniconda3/envs/vllm-0.21/bin/vllm --help
+which vllm
+vllm --help
 ```
 
-## 4. 准备索引与辅助模型
+## 3. 准备索引与辅助模型
 
 以下步骤使用 `backend` 环境执行：
 
@@ -77,7 +69,7 @@ uv run sustech-rag index
 
 对应的样例文件已经按这组模型更新好了。
 
-## 5. 准备 vLLM 配置
+## 4. 准备 vLLM 配置
 
 复制一份样例配置：
 
@@ -108,7 +100,7 @@ llm:
   max_tokens: 1024
   max_concurrent_requests: 32
   server_port: 8081
-  binary_path: "~/miniconda3/envs/vllm-0.21/bin/vllm"
+  binary_path: ""
   model_name: "Qwen/Qwen3.6-35B-A3B-FP8"
   served_model_name: "qwen3.6-35b-a3b-fp8"
   dtype: "auto"
@@ -133,7 +125,7 @@ llm:
 - 保持 `device: ""` 和 `reranker_device: ""`，让它们跑 CPU
 - 或者明确写成 `cuda:0` / `cuda:1`，但前提是你给 `vLLM` 留了显存余量，或者本来就没把 4 张卡全部占满
 
-## 6. 为什么先用 FP8
+## 5. 为什么先用 FP8
 
 对 `4 * 4090` 来说，我建议先从 `Qwen/Qwen3.6-35B-A3B-FP8` 起步，原因很实际：
 
@@ -151,7 +143,7 @@ llm:
 
 改掉即可，其他大部分参数可以保持不变。
 
-## 7. 启动服务
+## 6. 启动服务
 
 只需要启动 backend：
 
@@ -166,11 +158,12 @@ backend 会自动读取配置中的：
 - `llm.backend: vllm`
 - `llm.binary_path`
 
-然后拉起 `~/miniconda3/envs/vllm-0.21/bin/vllm serve ...`。
+如果 `llm.binary_path` 为空，backend 会直接拉起当前环境里的 `vllm serve ...`。
+只有在你想显式指向另一个可执行文件时，才需要填写 `binary_path`。
 
 也就是说，最终仍然是一条命令启动完整服务。
 
-## 8. 健康检查
+## 7. 健康检查
 
 后端：
 
@@ -180,7 +173,7 @@ curl http://127.0.0.1:8000/api/health
 
 如果配置正常，backend 内部会先等 `vLLM` 就绪，再对外返回 ready。
 
-## 9. 常见调整
+## 8. 常见调整
 
 吞吐偏低：
 
@@ -204,14 +197,15 @@ curl http://127.0.0.1:8000/api/health
 
 找不到 `vllm`：
 
-- 检查 `llm.binary_path` 是否指向真实文件
-- 手动运行一次 `~/miniconda3/envs/vllm-0.21/bin/vllm --help`
+- 先执行 `which vllm`
+- 如果 `llm.binary_path` 非空，再检查它是否指向真实文件
+- 手动运行一次 `vllm --help`
 
-## 10. 推荐的最小上线流程
+## 9. 推荐的最小上线流程
 
-1. 在服务器上准备好两个 conda 环境。
-2. 用 `backend` 环境完成 `uv sync`、建索引和配置检查。
-3. 用 `vllm-0.21` 环境安装 `vllm==0.21.0`。
-4. 修改 `configs/vllm.qwen35b.yaml` 中的 `binary_path`。
+1. 在服务器上准备好一个 `backend` 环境。
+2. 在这个环境里执行 `uv sync`，让 `vllm==0.21.0` 随 Linux 平台依赖一起装好。
+3. 用这个环境完成建索引和配置检查。
+4. 默认保持 `configs/vllm.qwen35b.yaml` 中的 `binary_path: ""`。
 5. 执行 `uv run sustech-rag serve --config configs/vllm.qwen35b.yaml`。
 6. 用 `/api/health` 和前端实际对话做验收。

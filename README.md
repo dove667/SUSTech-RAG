@@ -7,7 +7,7 @@
 - `backend/`：Python 数据管线与 FastAPI 服务，负责抓取、清洗、分块、向量索引、检索、重排序和 llama.cpp 生成。
 - `frontend/`：Vue 3 + Vite WebUI，负责桌面/移动/嵌入/悬浮入口、流式 SSE 对话、主题配置和本地会话存储。
 
-当前默认数据源是 `https://www.sustech.edu.cn/`，默认模型组合是 BGE embedding、BGE reranker 和 Qwen3 GGUF。后端现在同时支持 `llama.cpp` 和 `vLLM`，通过 YAML 中的 `llm.backend` 切换；`vLLM` 还可以通过配置指向另一个 conda 环境里的 `bin/vllm`，例如 `~/miniconda3/envs/vllm-0.21/bin/vllm`。面向 Linux 多卡服务器的样例配置已经切到 `Qwen/Qwen3-Embedding-4B` 和 `Qwen/Qwen3-Reranker-4B`。
+当前默认数据源是 `https://www.sustech.edu.cn/`，默认模型组合是 BGE embedding、BGE reranker 和 Qwen3 GGUF。后端现在同时支持 `llama.cpp` 和 `vLLM`，通过 YAML 中的 `llm.backend` 切换；Linux 上 `uv sync` 会自动安装 `vllm`，而 macOS / Windows 会跳过它。面向 Linux 多卡服务器的样例配置已经切到 `Qwen/Qwen3-Embedding-4B` 和 `Qwen/Qwen3-Reranker-4B`。
 
 ## 快速启动
 
@@ -19,7 +19,7 @@ uv sync
 uv run sustech-rag crawl
 uv run sustech-rag preprocess
 uv run sustech-rag index
-uv run sustech-rag serve --host 127.0.0.1 --port 8000
+uv run sustech-rag serve --host 127.0.0.1 --port 8001
 ```
 
 前端：
@@ -32,9 +32,9 @@ npm run dev
 
 开发服务器默认是：
 
-- 后端 API：`http://127.0.0.1:8000/api`
+- 后端 API：`http://127.0.0.1:8001/api`
 - 前端页面：`http://127.0.0.1:3000`
-- Vite 代理：前端的 `/api` 会转发到后端 `127.0.0.1:8000`
+- Vite 代理：前端的 `/api` 会转发到后端 `127.0.0.1:8001`
 
 ## 主要工作流
 

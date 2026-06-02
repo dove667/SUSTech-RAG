@@ -55,8 +55,8 @@ llm:
   server_port: 8081
   local_path: "/data1/zsh/models/Qwen3-30B-A3B-Instruct-2507-AWQ"
   served_model_name: "qwen3-30b-a3b-instruct-2507-awq"
-  dtype: "auto"
-  gpu_memory_utilization: 0.82
+  dtype: "float16" # auto
+  gpu_memory_utilization: 0.92
   tensor_parallel_size: 2
   pipeline_parallel_size: 1
   data_parallel_size: 1
@@ -65,7 +65,7 @@ llm:
   max_num_seqs: 32
   max_num_batched_tokens: 12288
   reasoning_parser: "qwen3"
-  api_key: ""
+  api_key: "114514"
   generation_config: "vllm"
   trust_remote_code: false
   enable_prefix_caching: true
@@ -73,5 +73,5 @@ llm:
   disable_uvicorn_access_log: true
   max_parallel_loading_workers: 2
   extra_args:
-    - "--disable-custom-all-reduce"
-    - "--enforce-eager"
+    - "--disable-custom-all-reduce" # 禁止 vllm 使用自定义的 all-reduce 实现，避免 nccl 报错
+    - "--enforce-eager" # 禁止图编译，vllm 和 cuda kernel 不兼容

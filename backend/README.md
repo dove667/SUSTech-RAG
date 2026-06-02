@@ -46,13 +46,7 @@ uv run sustech-rag index
 重建 Chroma collection：
 
 ```bash
-uv run sustech-rag index --rebuild
-```
-
-命令会读 `configs/default.yaml`。如果要使用其他配置：
-
-```bash
-uv run sustech-rag crawl --config /absolute/path/to/config.yaml
+uv run sustech-rag index --config configs/vllm.linux.yaml --rebuild
 ```
 
 ## 查询与服务

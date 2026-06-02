@@ -68,11 +68,8 @@ class RagService:
     def answer(self, query: str) -> str:
         with self._acquire_request_slot():
             chunks = self.retrieval.retrieve(query)
-            msgs = self._build_chat_messages(query, chunks, [])
-            prompt = "\n".join(
-                f"<|{m['role']}|>\n{m['content']}" for m in msgs
-            ) + "\n<|assistant|>\n"
-            return self.llm.generate(prompt)
+            messages = self._build_chat_messages(query, chunks, [])
+            return self.llm.generate(messages)
 
     def answer_stream(
         self,

@@ -25,9 +25,9 @@ class LlamaCppClient:
         self._host = "127.0.0.1"
         self._port = local.server_port
 
-    def generate(self, prompt: str) -> str:
+    def generate(self, messages: list[dict]) -> str:
         payload: dict = {
-            "prompt": prompt,
+            "messages": messages,
             "temperature": self._temperature,
             "max_tokens": self._max_tokens,
             "stream": False,
@@ -36,13 +36,14 @@ class LlamaCppClient:
             payload["stop"] = self._stop
         try:
             resp = httpx.post(
-                f"http://{self._host}:{self._port}/v1/completions",
+                f"http://{self._host}:{self._port}/v1/chat/completions",
                 json=payload,
                 timeout=300,
             )
             resp.raise_for_status()
             data = resp.json()
-            return data["choices"][0]["text"].strip()
+            message = data["choices"][0].get("message", {})
+            return (message.get("content") or "").strip()
         except httpx.HTTPError as exc:
             raise RuntimeError(f"llama-server request failed: {exc}") from exc
 
@@ -128,7 +129,7 @@ class LlamaCppLauncher:
     def start(self) -> None:
         self._start_process()
         print("[sustech-rag] warm-up inference ...", flush=True)
-        result = self._client.generate("Hello.")
+        result = self._client.generate([{"role": "user", "content": "Hello."}])
         print(f"[sustech-rag] model hot & ready (warm-up: {len(result)} chars)", flush=True)
 
     def shutdown(self) -> None:

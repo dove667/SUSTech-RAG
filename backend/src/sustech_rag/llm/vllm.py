@@ -28,10 +28,10 @@ class VLLMClient:
         self._host = "127.0.0.1"
         self._port = self._vllm.server_port
 
-    def generate(self, prompt: str) -> str:
+    def generate(self, messages: list[dict]) -> str:
         payload: dict[str, object] = {
             "model": self._served_model_name,
-            "prompt": prompt,
+            "messages": messages,
             "temperature": self._temperature,
             "max_tokens": self._max_tokens,
             "stream": False,
@@ -40,14 +40,15 @@ class VLLMClient:
             payload["stop"] = self._stop
         try:
             resp = httpx.post(
-                f"http://{self._host}:{self._port}/v1/completions",
+                f"http://{self._host}:{self._port}/v1/chat/completions",
                 json=payload,
                 timeout=300,
                 headers=self._auth_headers(),
             )
             resp.raise_for_status()
             data = resp.json()
-            return data["choices"][0]["text"].strip()
+            message = data["choices"][0].get("message", {})
+            return (message.get("content") or "").strip()
         except httpx.HTTPError as exc:
             raise RuntimeError(f"vLLM request failed: {exc}") from exc
 

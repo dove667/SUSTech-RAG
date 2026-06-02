@@ -21,16 +21,7 @@ def config_yaml() -> str:
 @pytest.fixture
 def client(monkeypatch: pytest.MonkeyPatch, config_yaml: str):
     class FakeLLM:
-        def start(self) -> None:
-            pass
-
-        def shutdown(self) -> None:
-            pass
-
-        def verify(self) -> tuple[bool, str]:
-            return True, "ok"
-
-        def generate(self, prompt: str) -> str:
+        def generate(self, messages: list[dict]) -> str:
             return "hello"
 
         def generate_stream(
@@ -43,10 +34,21 @@ def client(monkeypatch: pytest.MonkeyPatch, config_yaml: str):
             yield ("content", "hel")
             yield ("content", "lo")
 
+    class FakeLauncher:
+        def start(self) -> None:
+            pass
+
+        def shutdown(self) -> None:
+            pass
+
+        def verify(self) -> tuple[bool, str]:
+            return True, "ok"
+
     class FakeRag:
         def __init__(self, cfg: object) -> None:
             self._cfg = cfg
             self.llm = FakeLLM()
+            self.llm_launcher = FakeLauncher()
 
         def health_check(self) -> dict:
             return {"status": "ready", "components": {"llm": "ok", "retrieval": "ok"}}

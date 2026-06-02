@@ -138,10 +138,12 @@ class OpenAICompatibleClientBase(ABC):
         return {}
 
     def _extract_content_delta(self, delta: dict[str, object]) -> str:
-        return str(delta.get("content", ""))
+        value = delta.get("content")
+        return value if isinstance(value, str) else ""
 
     def _extract_think_delta(self, delta: dict[str, object]) -> str:
-        return str(delta.get("reasoning_content", ""))
+        value = delta.get("reasoning_content")
+        return value if isinstance(value, str) else ""
 
     @abstractmethod
     def _request_label(self) -> str:

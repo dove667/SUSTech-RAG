@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from sustech_rag.pipeline.rag_service import RagService
 from sustech_rag.pipeline.self_rag import SelfRAGController
 from sustech_rag.pipeline.schemas import ChunkRelevanceDecision
+from sustech_rag.llm.base import OpenAICompatibleClientBase, OpenAICompatibleEndpoint
 from sustech_rag.retrieval.reranker import RetrievedChunk
 
 
@@ -51,6 +52,30 @@ def test_self_rag_controller_parses_json_decisions() -> None:
     ]
     assert [chunk.text for chunk in relevant] == ["B"]
     assert support.supported is True
+
+
+class _DummyClient(OpenAICompatibleClientBase):
+    def _request_label(self) -> str:
+        return "dummy"
+
+    def _malformed_sse_label(self) -> str:
+        return "dummy"
+
+
+def test_openai_compatible_client_ignores_null_deltas() -> None:
+    client = _DummyClient(
+        endpoint=OpenAICompatibleEndpoint(
+            host="127.0.0.1",
+            port=8081,
+            model_path="/tmp/model",
+        ),
+        temperature=0.2,
+        max_tokens=64,
+        stop=[],
+    )
+
+    assert client._extract_content_delta({"content": None}) == ""
+    assert client._extract_think_delta({"reasoning_content": None}) == ""
 
 
 class FakeRetrieval:
@@ -102,12 +127,38 @@ class FakeSelfRAG:
     def should_retrieve(self, query: str, history: list[dict]):
         return SimpleNamespace(should_retrieve=self._should_retrieve, reason="")
 
+    def assess_chunk_relevance(
+        self,
+        query: str,
+        candidates: list[RetrievedChunk],
+    ) -> list[ChunkRelevanceDecision]:
+        relevant = self._relevant_rounds.pop(0)
+        chosen_texts = {chunk.text for chunk in relevant}
+        decisions: list[ChunkRelevanceDecision] = []
+        for idx, candidate in enumerate(candidates, 1):
+            is_relevant = candidate.text in chosen_texts
+            decisions.append(
+                ChunkRelevanceDecision(
+                    candidate_index=idx,
+                    relevant=is_relevant,
+                    reason="相关" if is_relevant else "不相关",
+                )
+            )
+        return decisions
+
     def filter_relevant_chunks(
         self,
         query: str,
         candidates: list[RetrievedChunk],
+        decisions: list[ChunkRelevanceDecision] | None = None,
     ) -> list[RetrievedChunk]:
-        return self._relevant_rounds.pop(0)
+        if decisions is None:
+            decisions = self.assess_chunk_relevance(query, candidates)
+        chosen: list[RetrievedChunk] = []
+        for decision in decisions:
+            if decision.relevant:
+                chosen.append(candidates[decision.candidate_index - 1])
+        return chosen
 
     def is_answer_supported(
         self,
@@ -145,6 +196,8 @@ def test_self_rag_can_skip_retrieval() -> None:
 
     assert plan.requires_retrieval is False
     assert plan.chunks == []
+    assert [event.event for event in plan.debug_events] == ["retrieval.decision"]
+    assert plan.debug_events[0].payload["should_retrieve"] is False
     assert service.retrieval.calls == []
 
 
@@ -167,5 +220,12 @@ def test_self_rag_retries_with_seen_chunk_exclusion() -> None:
 
     assert plan.requires_retrieval is True
     assert [chunk.text for chunk in plan.chunks] == ["Doc-1", "Doc-2"]
+    assert [event.event for event in plan.debug_events] == [
+        "retrieval.decision",
+        "retrieval.assessment",
+        "support.decision",
+        "retrieval.assessment",
+        "support.decision",
+    ]
     assert retrieval.calls == [set(), {"Doc-1"}]
     assert len(llm.generate_calls) == 2

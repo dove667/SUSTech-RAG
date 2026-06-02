@@ -41,7 +41,14 @@ async function scrollToBottom(force = false) {
 }
 
 watch(
-  () => props.messages.map(m => m.blocks.reduce((n, b) => n + (b.content?.length || 0) + (b.items?.length || 0) + (b.url ? 1 : 0), 0) + (m.loading ? 1 : 0)),
+  () => props.messages.map((m) => m.blocks.reduce(
+    (n, b) => n
+      + (b.content?.length || 0)
+      + (b.items?.length || 0)
+      + (b.events?.length || 0)
+      + (b.url ? 1 : 0),
+    0,
+  ) + (m.loading ? 1 : 0)),
   () => scrollToBottom(),
   { deep: true },
 );

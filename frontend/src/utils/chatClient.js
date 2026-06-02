@@ -96,6 +96,12 @@ export function chat({ settings, messages, conversationId, signal }, handlers) {
 function dispatch(event, data, h) {
   switch (event) {
     case 'start':         return h.onStart?.(data);
+    case 'retrieval.decision':
+      return h.onRetrievalDecision?.(data);
+    case 'retrieval.assessment':
+      return h.onRetrievalAssessment?.(data);
+    case 'support.decision':
+      return h.onSupportDecision?.(data);
     case 'think.delta':   return h.onThinkDelta?.(data.text ?? '');
     case 'think.end':     return h.onThinkEnd?.();
     case 'content.delta': return h.onContentDelta?.(data.text ?? '');

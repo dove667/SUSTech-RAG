@@ -4,6 +4,7 @@ import ThinkBlock from './blocks/ThinkBlock.vue';
 import ToolBlock from './blocks/ToolBlock.vue';
 import ImageBlock from './blocks/ImageBlock.vue';
 import ReferenceBlock from './blocks/ReferenceBlock.vue';
+import SelfRagTraceBlock from './blocks/SelfRagTraceBlock.vue';
 import ErrorBlock from './blocks/ErrorBlock.vue';
 import { useSettings } from '@/stores/settings.js';
 import { computed } from 'vue';
@@ -65,6 +66,12 @@ function copyAll() {
         <ReferenceBlock
           v-else-if="b.type === 'reference' && settings.showReferences"
           :items="b.items"
+        />
+
+        <SelfRagTraceBlock
+          v-else-if="b.type === 'self_rag_trace'"
+          :mode="b.mode"
+          :events="b.events"
         />
 
         <ErrorBlock

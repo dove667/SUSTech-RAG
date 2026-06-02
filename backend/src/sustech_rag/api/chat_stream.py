@@ -82,6 +82,8 @@ def sync_chat_stream(
                 return
             if event_type == "reference":
                 yield sse_frame("reference", {"items": chunks_to_reference_items(data)})
+            elif event_type in {"retrieval.decision", "retrieval.assessment", "support.decision"}:
+                yield sse_frame(event_type, data)
             elif event_type == "think.delta":
                 yield sse_frame("think.delta", {"text": data})
             elif event_type == "think.end":

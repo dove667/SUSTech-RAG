@@ -58,6 +58,30 @@ def client(monkeypatch: pytest.MonkeyPatch, config_yaml: str):
             messages: list[dict],
             cancel_event: threading.Event | None = None,
         ):
+            yield (
+                "retrieval.decision",
+                {
+                    "mode": "self_rag",
+                    "should_retrieve": True,
+                    "thought": "这个问题需要先查资料。",
+                },
+            )
+            yield (
+                "retrieval.assessment",
+                {
+                    "round": 1,
+                    "thought": "第 1 轮筛出了 1 条相关资料。",
+                    "items": [
+                        {
+                            "candidate_index": 1,
+                            "title": "Local Doc",
+                            "source": "dense",
+                            "relevant": True,
+                            "thought": "这条资料直接回答了问题。",
+                        }
+                    ],
+                },
+            )
             yield ("reference", [
                 RetrievedChunk(
                     text="snippet text",
@@ -65,6 +89,14 @@ def client(monkeypatch: pytest.MonkeyPatch, config_yaml: str):
                     metadata={"title": "Local Doc", "source_url": "http://127.0.0.1/page"},
                 )
             ])
+            yield (
+                "support.decision",
+                {
+                    "round": 1,
+                    "supported": True,
+                    "thought": "现有证据已经足够支撑回答。",
+                },
+            )
             # simulate slow generation so cancel tests can intercept
             time.sleep(0.05)
             if cancel_event is not None and cancel_event.is_set():
@@ -121,8 +153,12 @@ class TestChatCompletions:
         assert "text/event-stream" in (res.headers.get("content-type") or "")
         body = res.text
         assert "event: start" in body
+        assert "event: retrieval.decision" in body
+        assert "这个问题需要先查资料" in body
+        assert "event: retrieval.assessment" in body
         assert "event: reference" in body
         assert "Local Doc" in body
+        assert "event: support.decision" in body
         assert "event: think.delta" in body
         assert "event: think.end" in body
         assert "event: content.delta" in body

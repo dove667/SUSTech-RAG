@@ -31,7 +31,7 @@ embedding:
   dtype: "bfloat16"
 
 retrieval:
-  mode: "simple"
+  mode: "self_rag"
   similarity_top_k: 8
   sparse_top_k: 8
   sparse_enabled: true

@@ -6,7 +6,13 @@ from contextlib import contextmanager
 
 from sustech_rag.config.models import AppConfig
 from sustech_rag.llm import create_llm_runtime
-from sustech_rag.pipeline.schemas import AnswerPlan
+from sustech_rag.pipeline.schemas import (
+    AnswerPlan,
+    ChunkRelevanceDecision,
+    RetrievalDecision,
+    SelfRAGDebugEvent,
+    SupportDecision,
+)
 from sustech_rag.pipeline.self_rag import SelfRAGController
 from sustech_rag.retrieval.engine import RetrievalEngine
 from sustech_rag.retrieval.reranker import RetrievedChunk
@@ -89,6 +95,9 @@ class RagService:
             if cancel_event is not None and cancel_event.is_set():
                 raise GenerationCancelledError("generation cancelled")
 
+            for debug_event in plan.debug_events:
+                yield (debug_event.event, debug_event.payload)
+
             if plan.requires_retrieval and plan.chunks:
                 yield ("reference", plan.chunks)
 
@@ -141,21 +150,35 @@ class RagService:
                 requires_retrieval=True,
             )
 
+        debug_events: list[SelfRAGDebugEvent] = []
         decision = self._self_rag.should_retrieve(query, history)
+        debug_events.append(self._build_retrieval_decision_event(decision))
         if not decision.should_retrieve:
-            return AnswerPlan(chunks=[], requires_retrieval=False)
+            return AnswerPlan(
+                chunks=[],
+                requires_retrieval=False,
+                debug_events=debug_events,
+            )
 
         accumulated: list[RetrievedChunk] = []
         accepted_texts: set[str] = set()
         seen_texts: set[str] = set()
 
-        for _ in range(self._self_rag.max_rounds):
+        for round_index in range(1, self._self_rag.max_rounds + 1):
             candidates = self.retrieval.retrieve(query, exclude_texts=seen_texts)
             if not candidates:
                 break
 
             seen_texts.update(chunk.text for chunk in candidates)
-            relevant = self._self_rag.filter_relevant_chunks(query, candidates)
+            assessments = self._self_rag.assess_chunk_relevance(query, candidates)
+            debug_events.append(
+                self._build_retrieval_assessment_event(round_index, candidates, assessments)
+            )
+            relevant = self._self_rag.filter_relevant_chunks(
+                query,
+                candidates,
+                decisions=assessments,
+            )
             if not relevant:
                 continue
 
@@ -168,10 +191,90 @@ class RagService:
             draft_messages = self._build_chat_messages(query, accumulated, history)
             draft_answer = self.llm.generate(draft_messages)
             support = self._self_rag.is_answer_supported(query, draft_answer, accumulated)
+            debug_events.append(self._build_support_decision_event(round_index, support))
             if support.supported:
-                return AnswerPlan(chunks=accumulated, requires_retrieval=True)
+                return AnswerPlan(
+                    chunks=accumulated,
+                    requires_retrieval=True,
+                    debug_events=debug_events,
+                )
 
-        return AnswerPlan(chunks=accumulated, requires_retrieval=True)
+        return AnswerPlan(
+            chunks=accumulated,
+            requires_retrieval=True,
+            debug_events=debug_events,
+        )
+
+    def _build_retrieval_decision_event(
+        self,
+        decision: RetrievalDecision,
+    ) -> SelfRAGDebugEvent:
+        thought = (
+            decision.reason.strip()
+            or ("这个问题需要先查资料。" if decision.should_retrieve else "这个问题可以直接回答。")
+        )
+        return SelfRAGDebugEvent(
+            event="retrieval.decision",
+            payload={
+                "mode": "self_rag",
+                "should_retrieve": decision.should_retrieve,
+                "thought": thought,
+            },
+        )
+
+    def _build_retrieval_assessment_event(
+        self,
+        round_index: int,
+        candidates: list[RetrievedChunk],
+        assessments: list[ChunkRelevanceDecision],
+    ) -> SelfRAGDebugEvent:
+        by_index = {item.candidate_index: item for item in assessments}
+        items: list[dict[str, object]] = []
+        relevant_count = 0
+        for idx, chunk in enumerate(candidates, 1):
+            assessment = by_index.get(idx)
+            relevant = bool(assessment.relevant) if assessment is not None else False
+            if relevant:
+                relevant_count += 1
+            items.append(
+                {
+                    "candidate_index": idx,
+                    "title": str(chunk.metadata.get("title") or "Untitled"),
+                    "source": str(chunk.metadata.get("source") or ""),
+                    "relevant": relevant,
+                    "thought": (
+                        assessment.reason.strip()
+                        if assessment is not None and assessment.reason.strip()
+                        else ("这条资料相关。" if relevant else "这条资料帮助不大。")
+                    ),
+                }
+            )
+        return SelfRAGDebugEvent(
+            event="retrieval.assessment",
+            payload={
+                "round": round_index,
+                "thought": f"第 {round_index} 轮筛出了 {relevant_count} 条相关资料。",
+                "items": items,
+            },
+        )
+
+    def _build_support_decision_event(
+        self,
+        round_index: int,
+        decision: SupportDecision,
+    ) -> SelfRAGDebugEvent:
+        thought = (
+            decision.reason.strip()
+            or ("现有证据已经足够支撑回答。" if decision.supported else "现有证据还不够，需要继续查。")
+        )
+        return SelfRAGDebugEvent(
+            event="support.decision",
+            payload={
+                "round": round_index,
+                "supported": decision.supported,
+                "thought": thought,
+            },
+        )
 
     @contextmanager
     def _acquire_request_slot(

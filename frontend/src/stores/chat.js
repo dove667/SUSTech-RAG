@@ -6,7 +6,7 @@ import { buildApiUrl, fetchWithTimeout } from '@/utils/api.js';
 /**
  * A chat conversation is an ordered list of messages. Each message has:
  *   id, role ('user' | 'assistant' | 'system'), blocks: Block[]
- * Each Block has a `type`: 'text' | 'think' | 'tool' | 'image' | 'reference' | 'error'
+ * Each Block has a `type`: 'text' | 'think' | 'tool' | 'image' | 'reference' | 'self_rag_trace' | 'error'
  * The renderer decides how to present each block.
  */
 
@@ -151,9 +151,37 @@ export const useChat = defineStore('chat', {
       let currentText = null;
       let currentThink = null;
 
+      const getOrCreateTraceBlock = () => {
+        const trace = getOrCreateBlock('self_rag_trace');
+        if (!trace.events) trace.events = [];
+        return trace;
+      };
+
       const handlers = {
         onStart: () => {
           msg.loading = true;
+        },
+        onRetrievalDecision: (data) => {
+          const trace = getOrCreateTraceBlock();
+          trace.mode = data.mode || 'self_rag';
+          trace.events.push({
+            type: 'retrieval.decision',
+            ...data,
+          });
+        },
+        onRetrievalAssessment: (data) => {
+          const trace = getOrCreateTraceBlock();
+          trace.events.push({
+            type: 'retrieval.assessment',
+            ...data,
+          });
+        },
+        onSupportDecision: (data) => {
+          const trace = getOrCreateTraceBlock();
+          trace.events.push({
+            type: 'support.decision',
+            ...data,
+          });
         },
         onThinkDelta: (t) => {
           if (!currentThink || currentThink.closed) {

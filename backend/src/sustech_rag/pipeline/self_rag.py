@@ -12,8 +12,11 @@ from sustech_rag.pipeline.schemas import (
 from sustech_rag.retrieval.reranker import RetrievedChunk
 
 _ROUTER_SYSTEM_PROMPT = (
-    "你是一个 RAG 路由器。请判断用户问题是否必须依赖校园知识库检索。"
-    "如果问题属于闲聊、常识、问候、简单改写或无需校园事实支持，可不检索。"
+    "你是南方科技大学校园知识库问答系统的检索路由器。"
+    "知识库里保存的是与南方科技大学有关的公开网页信息。"
+    "只有当用户问题需要查询、核实或引用南方科技大学相关事实信息时，才应触发检索。"
+    "如果问题只是问候、闲聊、助手自我介绍、表达感谢、简单改写，"
+    "或者根本不需要查询南方科技大学相关信息，就不应检索。"
     "只返回 JSON。"
 )
 
@@ -39,7 +42,8 @@ class SelfRAGController:
     def should_retrieve(self, query: str, history: list[dict]) -> RetrievalDecision:
         history_text = self._format_history(history)
         user_prompt = (
-            "请判断下面这个问题是否需要检索校园知识库后再回答。\n"
+            "请判断下面这个问题，是否需要先检索南方科技大学相关知识库再回答。\n"
+            "只有在回答依赖南方科技大学相关事实信息时，才选择 should_retrieve=true。\n"
             f"对话历史：\n{history_text}\n\n"
             f"用户问题：{query}\n\n"
             '输出 JSON，格式为 {"should_retrieve": true, "reason": "..."}。'
@@ -90,8 +94,10 @@ class SelfRAGController:
         self,
         query: str,
         candidates: list[RetrievedChunk],
+        decisions: list[ChunkRelevanceDecision] | None = None,
     ) -> list[RetrievedChunk]:
-        decisions = self.assess_chunk_relevance(query, candidates)
+        if decisions is None:
+            decisions = self.assess_chunk_relevance(query, candidates)
         chosen: list[RetrievedChunk] = []
         for decision in decisions:
             if decision.relevant:

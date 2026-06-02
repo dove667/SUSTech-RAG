@@ -10,6 +10,7 @@ from pathlib import Path
 import httpx
 
 from sustech_rag.config.models import AppConfig, LlamaCppConfig
+from sustech_rag.llm.base import OpenAICompatibleEndpoint
 
 
 class LlamaCppClient:
@@ -18,12 +19,18 @@ class LlamaCppClient:
     def __init__(self, config: AppConfig) -> None:
         if not isinstance(config.llm, LlamaCppConfig):
             raise TypeError("LlamaCppClient requires a llama_cpp configuration.")
-        local = config.llm
-        self._temperature = local.temperature
-        self._max_tokens = local.max_tokens
-        self._stop = local.stop
-        self._host = "127.0.0.1"
-        self._port = local.server_port
+        self._endpoint = OpenAICompatibleEndpoint(
+            model_path=config.llm.model_path,
+            host="127.0.0.1",
+            port=config.llm.server_port,
+        )
+        self._temperature = config.llm.temperature
+        self._max_tokens = config.llm.max_tokens
+        self._stop = config.llm.stop
+
+    @property
+    def endpoint(self) -> OpenAICompatibleEndpoint:
+        return self._endpoint
 
     def generate(self, messages: list[dict]) -> str:
         payload: dict = {
@@ -36,7 +43,7 @@ class LlamaCppClient:
             payload["stop"] = self._stop
         try:
             resp = httpx.post(
-                f"http://{self._host}:{self._port}/v1/chat/completions",
+                f"{self._endpoint.base_url}/v1/chat/completions",
                 json=payload,
                 timeout=300,
             )
@@ -63,7 +70,7 @@ class LlamaCppClient:
         try:
             with httpx.stream(
                 "POST",
-                f"http://{self._host}:{self._port}/v1/chat/completions",
+                f"{self._endpoint.base_url}/v1/chat/completions",
                 json=payload,
                 timeout=300,
             ) as resp:
@@ -97,10 +104,6 @@ class LlamaCppClient:
         except httpx.HTTPError as exc:
             raise RuntimeError(f"llama-server stream request failed: {exc}") from exc
 
-    def probe_ready(self) -> bool:
-        resp = httpx.get(f"http://{self._host}:{self._port}/health", timeout=2)
-        return resp.status_code == 200
-
 
 class LlamaCppLauncher:
     """Managed llama.cpp launcher; keeps warm-up behavior here."""
@@ -113,7 +116,7 @@ class LlamaCppLauncher:
         local = config.llm
         self.binary = ensure_llama_cpp_binary()
         self.model_path = ensure_gguf_model(local.model_path)
-        self._client = client
+        self._endpoint = client.endpoint
         self._device_mode = local.device_mode
         self._device_name = local.device_name
         self._gpu_layers = local.gpu_layers
@@ -122,9 +125,8 @@ class LlamaCppLauncher:
         self._reasoning = local.reasoning
         self._n_ctx = local.n_ctx
         self._extra_args = local.extra_args
-        self._host = "127.0.0.1"
-        self._port = local.server_port
         self._proc: subprocess.Popen | None = None
+        self._client = client
 
     def start(self) -> None:
         self._start_process()
@@ -157,12 +159,15 @@ class LlamaCppLauncher:
         cmd.extend(self._build_runtime_args())
         cmd.extend([
             "-m", self.model_path,
-            "--host", self._host,
-            "--port", str(self._port),
+            "--host", self._endpoint.host,
+            "--port", str(self._endpoint.port),
             "-c", str(self._n_ctx),
         ])
         cmd.extend(self._extra_args)
-        print(f"[sustech-rag] starting llama-server on {self._host}:{self._port} ...", flush=True)
+        print(
+            f"[sustech-rag] starting llama-server on {self._endpoint.host}:{self._endpoint.port} ...",
+            flush=True,
+        )
         self._proc = subprocess.Popen(
             cmd,
             stdin=subprocess.DEVNULL,
@@ -182,7 +187,7 @@ class LlamaCppLauncher:
                     "Check the process output above for diagnostics."
                 )
             try:
-                if self._client.probe_ready():
+                if self._probe_ready():
                     print("[sustech-rag] llama-server is ready.", flush=True)
                     return
             except httpx.RequestError as exc:
@@ -194,6 +199,10 @@ class LlamaCppLauncher:
             msg += f", last error: {last_error}"
         msg += ")"
         raise RuntimeError(msg)
+
+    def _probe_ready(self) -> bool:
+        resp = httpx.get(f"{self._endpoint.base_url}/health", timeout=2)
+        return resp.status_code == 200
 
     def _build_runtime_args(self) -> list[str]:
         args: list[str] = []

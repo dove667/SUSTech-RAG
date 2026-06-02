@@ -57,8 +57,8 @@ def test_load_vllm_config_preserves_absolute_and_home_paths(
         "vector_store": {"persist_dir": "data/vector_store/chroma", "collection_name": "kb"},
         "llm": {
             "backend": "vllm",
-            "model_name": "",
             "local_path": str(absolute_model_dir),
+            "served_model_name": "qwen-local",
         },
     }
     config_path = config_dir / "vllm.yaml"

@@ -138,14 +138,13 @@ embedding/reranker/GGUF。若安装目录不在 PATH 中，llama.cpp 安装命�
 PATH 命令。后端运行时不会自动下载 GGUF；缺失时请先运行模型下载命令，或把
 `llm.model_path` 指向已有 GGUF 文件。
 
-`vLLM` 后端现在默认使用当前 Python 环境中的模块入口启动，也就是 `python -m vllm.entrypoints.openai.api_server`。因此在 Linux 服务器上通常直接 `uv sync && uv run sustech-rag serve` 就够了。推荐在 Linux/CUDA 环境中使用单机多卡张量并行；4 卡样例已在 `configs/vllm.linux.example.yaml` 给出。
+`vLLM` 后端现在默认使用当前 Python 环境中的模块入口启动，也就是 `python -m vllm.entrypoints.openai.api_server`。它只接受本地模型路径，不会通过 Hugging Face repo id 自动拉取模型。推荐在 Linux/CUDA 环境中使用单机多卡张量并行；4 卡样例已在 `configs/vllm.linux.example.yaml` 给出。
 
 如果你希望 backend 和 vLLM 在同一台 Linux 机器、并且直接共用当前环境，可以这样配置：
 
 ```yaml
 llm:
   backend: "vllm"
-  model_name: "Qwen/Qwen3.6-35B-A3B-FP8"
   tensor_parallel_size: 4
 ```
 

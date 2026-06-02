@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 
 
 class ProjectConfig(BaseModel):
@@ -77,9 +77,8 @@ class LlamaCppConfig(LLMSharedConfig):
 class VLLMConfig(LLMSharedConfig):
 
     backend: Literal["vllm"] = "vllm"
-    model_name: str = ""
-    local_path: str = ""
-    served_model_name: str = ""
+    local_path: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+    served_model_name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
     dtype: str = "auto"
     gpu_memory_utilization: float = 0.92
     tensor_parallel_size: int = 1

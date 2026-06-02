@@ -6,6 +6,19 @@ from dataclasses import dataclass
 from typing import Protocol
 
 
+@dataclass(frozen=True)
+class OpenAICompatibleEndpoint:
+    host: str
+    port: int
+    model_path: str
+    served_model_name: str = ""
+    api_key: str = ""
+
+    @property
+    def base_url(self) -> str:
+        return f"http://{self.host}:{self.port}"
+
+
 class LLMClient(Protocol):
     """统一的生成接口；不负责进程生命周期。"""
 

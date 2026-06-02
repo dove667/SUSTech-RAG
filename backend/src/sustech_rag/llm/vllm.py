@@ -7,10 +7,12 @@ import sys
 import threading
 import time
 from collections.abc import Iterator
+from dataclasses import dataclass
 
 import httpx
 
 from sustech_rag.config.models import AppConfig, VLLMConfig
+from sustech_rag.llm.base import OpenAICompatibleEndpoint
 
 
 class VLLMClient:
@@ -19,18 +21,24 @@ class VLLMClient:
     def __init__(self, config: AppConfig) -> None:
         if not isinstance(config.llm, VLLMConfig):
             raise TypeError("VLLMClient requires a vllm configuration.")
-        self._vllm = config.llm
-        self.model_ref = self._resolve_model_ref(self._vllm)
-        self._served_model_name = self._vllm.served_model_name or self.model_ref
-        self._temperature = self._vllm.temperature
-        self._max_tokens = self._vllm.max_tokens
-        self._stop = self._vllm.stop
-        self._host = "127.0.0.1"
-        self._port = self._vllm.server_port
+        self._endpoint = OpenAICompatibleEndpoint(
+            model_path=config.llm.local_path,
+            host="127.0.0.1",
+            port=config.llm.server_port,
+            served_model_name=config.llm.served_model_name,
+            api_key=config.llm.api_key,
+        )
+        self._temperature = config.llm.temperature
+        self._max_tokens = config.llm.max_tokens
+        self._stop = config.llm.stop
+
+    @property
+    def endpoint(self) -> OpenAICompatibleEndpoint:
+        return self._endpoint
 
     def generate(self, messages: list[dict]) -> str:
         payload: dict[str, object] = {
-            "model": self._served_model_name,
+            "model": self._endpoint.served_model_name,
             "messages": messages,
             "temperature": self._temperature,
             "max_tokens": self._max_tokens,
@@ -40,7 +48,7 @@ class VLLMClient:
             payload["stop"] = self._stop
         try:
             resp = httpx.post(
-                f"http://{self._host}:{self._port}/v1/chat/completions",
+                f"{self._endpoint.base_url}/v1/chat/completions",
                 json=payload,
                 timeout=300,
                 headers=self._auth_headers(),
@@ -58,7 +66,7 @@ class VLLMClient:
         cancel_event: threading.Event | None = None,
     ) -> Iterator[tuple[str, str]]:
         payload: dict[str, object] = {
-            "model": self._served_model_name,
+            "model": self._endpoint.served_model_name,
             "messages": messages,
             "temperature": self._temperature,
             "max_tokens": self._max_tokens,
@@ -69,7 +77,7 @@ class VLLMClient:
         try:
             with httpx.stream(
                 "POST",
-                f"http://{self._host}:{self._port}/v1/chat/completions",
+                f"{self._endpoint.base_url}/v1/chat/completions",
                 json=payload,
                 timeout=300,
                 headers=self._auth_headers(),
@@ -110,33 +118,10 @@ class VLLMClient:
         except httpx.HTTPError as exc:
             raise RuntimeError(f"vLLM stream request failed: {exc}") from exc
 
-    def probe_ready(self) -> bool:
-        health = httpx.get(
-            f"http://{self._host}:{self._port}/health",
-            timeout=2,
-            headers=self._auth_headers(),
-        )
-        if health.status_code == 200:
-            return True
-
-        models = httpx.get(
-            f"http://{self._host}:{self._port}/v1/models",
-            timeout=2,
-            headers=self._auth_headers(),
-        )
-        return models.status_code == 200
-
     def _auth_headers(self) -> dict[str, str]:
-        if not self._vllm.api_key:
+        if not self._endpoint.api_key:
             return {}
-        return {"Authorization": f"Bearer {self._vllm.api_key}"}
-
-    @staticmethod
-    def _resolve_model_ref(config: VLLMConfig) -> str:
-        model_ref = config.local_path or config.model_name
-        if not model_ref:
-            raise ValueError("vLLM backend requires llm.model_name or llm.local_path.")
-        return model_ref
+        return {"Authorization": f"Bearer {self._endpoint.api_key}"}
 
 
 class VLLMLauncher:
@@ -148,12 +133,12 @@ class VLLMLauncher:
         if not isinstance(config.llm, VLLMConfig):
             raise TypeError("VLLMLauncher requires a vllm configuration.")
         self._vllm = config.llm
-        self._client = client
+        self._endpoint = client.endpoint
         self._proc: subprocess.Popen | None = None
 
     def verify(self) -> tuple[bool, str]:
-        if not self._client.model_ref:
-            return False, "vLLM model_name or local_path must be configured"
+        if not self._endpoint.model_path:
+            return False, "vLLM local_path must be configured"
         if importlib.util.find_spec("vllm") is None:
             return False, "vLLM is not installed in the current environment"
         return True, "ok"
@@ -178,18 +163,15 @@ class VLLMLauncher:
             "-m",
             self._ENTRYPOINT,
             "--model",
-            self._client.model_ref,
+            self._endpoint.model_path,
         ]
         cmd.extend(self._build_runtime_args())
         print(
-            f"[sustech-rag] starting vLLM server on 127.0.0.1:{self._vllm.server_port} "
-            f"for model {self._client._served_model_name} ...",
+            f"[sustech-rag] starting vLLM server on {self._endpoint.host}:{self._endpoint.port} "
+            f"for model {self._endpoint.served_model_name} ...",
             flush=True,
         )
-        self._proc = subprocess.Popen(
-            cmd,
-            stdin=subprocess.DEVNULL,
-        )
+        self._proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL)
         self._wait_until_ready()
 
     def _wait_until_ready(self, timeout: float = 300) -> None:
@@ -203,7 +185,7 @@ class VLLMLauncher:
                     "Check the process output above for diagnostics."
                 )
             try:
-                if self._client.probe_ready():
+                if self._probe_ready():
                     print("[sustech-rag] vLLM server is ready.", flush=True)
                     return
             except httpx.RequestError as exc:
@@ -216,13 +198,33 @@ class VLLMLauncher:
         msg += ")"
         raise RuntimeError(msg)
 
+    def _probe_ready(self) -> bool:
+        health = httpx.get(
+            f"{self._endpoint.base_url}/health",
+            timeout=2,
+            headers=self._auth_headers(),
+        )
+        if health.status_code == 200:
+            return True
+        models = httpx.get(
+            f"{self._endpoint.base_url}/v1/models",
+            timeout=2,
+            headers=self._auth_headers(),
+        )
+        return models.status_code == 200
+
+    def _auth_headers(self) -> dict[str, str]:
+        if not self._endpoint.api_key:
+            return {}
+        return {"Authorization": f"Bearer {self._endpoint.api_key}"}
+
     def _build_runtime_args(self) -> list[str]:
         cfg = self._vllm
         args = [
             "--host",
-            "127.0.0.1",
+            self._endpoint.host,
             "--port",
-            str(cfg.server_port),
+            str(self._endpoint.port),
             "--dtype",
             cfg.dtype,
             "--gpu-memory-utilization",

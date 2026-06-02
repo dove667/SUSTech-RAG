@@ -12,6 +12,7 @@ from sustech_rag.config.models import (
     VectorStoreConfig,
     VLLMConfig,
 )
+from sustech_rag.llm.base import OpenAICompatibleEndpoint
 from sustech_rag.llm.factory import create_llm_runtime
 from sustech_rag.llm.llama_cpp import LlamaCppLauncher
 from sustech_rag.llm.vllm import VLLMClient, VLLMLauncher
@@ -58,7 +59,8 @@ def test_factory_builds_vllm_runtime() -> None:
         ),
         llm=VLLMConfig(
             backend="vllm",
-            model_name="Qwen/Qwen3-8B",
+            local_path="/models/Qwen3-8B",
+            served_model_name="qwen3-8b",
         ),
     )
 
@@ -69,13 +71,15 @@ def test_factory_builds_vllm_runtime() -> None:
 
 
 def test_vllm_runtime_args_include_multi_gpu_options() -> None:
-    client = object.__new__(VLLMClient)
-    client.model_ref = "Qwen/Qwen3-32B"
-    client._served_model_name = "qwen3-32b"
     launcher = object.__new__(VLLMLauncher)
-    launcher._client = client
+    launcher._endpoint = OpenAICompatibleEndpoint(
+        host="127.0.0.1",
+        port=8081,
+        model_path="/models/Qwen3-32B",
+        served_model_name="qwen3-32b",
+    )
     launcher._vllm = VLLMConfig(
-        model_name="Qwen/Qwen3-32B",
+        local_path="/models/Qwen3-32B",
         served_model_name="qwen3-32b",
         dtype="float16",
         gpu_memory_utilization=0.92,

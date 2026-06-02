@@ -1,108 +1,37 @@
 from __future__ import annotations
 
-import json
 import subprocess
-import threading
 import time
-from collections.abc import Iterator
 from pathlib import Path
 
 import httpx
 
 from sustech_rag.config.models import AppConfig, LlamaCppConfig
-from sustech_rag.llm.base import OpenAICompatibleEndpoint
+from sustech_rag.llm.base import OpenAICompatibleClientBase, OpenAICompatibleEndpoint
 
 
-class LlamaCppClient:
+class LlamaCppClient(OpenAICompatibleClientBase):
     """OpenAI-compatible llama.cpp client; does not manage the server process."""
 
     def __init__(self, config: AppConfig) -> None:
         if not isinstance(config.llm, LlamaCppConfig):
             raise TypeError("LlamaCppClient requires a llama_cpp configuration.")
-        self._endpoint = OpenAICompatibleEndpoint(
-            model_path=config.llm.model_path,
-            host="127.0.0.1",
-            port=config.llm.server_port,
+        super().__init__(
+            endpoint=OpenAICompatibleEndpoint(
+                model_path=config.llm.model_path,
+                host="127.0.0.1",
+                port=config.llm.server_port,
+            ),
+            temperature=config.llm.temperature,
+            max_tokens=config.llm.max_tokens,
+            stop=config.llm.stop,
         )
-        self._temperature = config.llm.temperature
-        self._max_tokens = config.llm.max_tokens
-        self._stop = config.llm.stop
 
-    @property
-    def endpoint(self) -> OpenAICompatibleEndpoint:
-        return self._endpoint
+    def _request_label(self) -> str:
+        return "llama-server"
 
-    def generate(self, messages: list[dict]) -> str:
-        payload: dict = {
-            "messages": messages,
-            "temperature": self._temperature,
-            "max_tokens": self._max_tokens,
-            "stream": False,
-        }
-        if self._stop:
-            payload["stop"] = self._stop
-        try:
-            resp = httpx.post(
-                f"{self._endpoint.base_url}/v1/chat/completions",
-                json=payload,
-                timeout=300,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            message = data["choices"][0].get("message", {})
-            return (message.get("content") or "").strip()
-        except httpx.HTTPError as exc:
-            raise RuntimeError(f"llama-server request failed: {exc}") from exc
-
-    def generate_stream(
-        self,
-        messages: list[dict],
-        cancel_event: threading.Event | None = None,
-    ) -> Iterator[tuple[str, str]]:
-        payload: dict = {
-            "messages": messages,
-            "temperature": self._temperature,
-            "max_tokens": self._max_tokens,
-            "stream": True,
-        }
-        if self._stop:
-            payload["stop"] = self._stop
-        try:
-            with httpx.stream(
-                "POST",
-                f"{self._endpoint.base_url}/v1/chat/completions",
-                json=payload,
-                timeout=300,
-            ) as resp:
-                resp.raise_for_status()
-                for line in resp.iter_lines():
-                    if cancel_event is not None and cancel_event.is_set():
-                        break
-                    if not line.startswith("data: "):
-                        continue
-                    data_str = line[6:]
-                    if data_str == "[DONE]":
-                        break
-                    try:
-                        data = json.loads(data_str)
-                        choices = data.get("choices", [])
-                        if choices:
-                            delta = choices[0].get("delta", {})
-                            think = delta.get("reasoning_content", "")
-                            text = delta.get("content", "")
-                            if think:
-                                yield ("think", think)
-                            if text:
-                                yield ("content", text)
-                    except json.JSONDecodeError:
-                        printable = data_str[:120]
-                        print(
-                            f"[sustech-rag] skipped malformed SSE JSON: {printable}",
-                            flush=True,
-                        )
-                        continue
-        except httpx.HTTPError as exc:
-            raise RuntimeError(f"llama-server stream request failed: {exc}") from exc
+    def _malformed_sse_label(self) -> str:
+        return "SSE JSON"
 
 
 class LlamaCppLauncher:

@@ -1,127 +1,51 @@
 from __future__ import annotations
 
 import importlib.util
-import json
 import subprocess
 import sys
-import threading
 import time
-from collections.abc import Iterator
-from dataclasses import dataclass
 
 import httpx
 
 from sustech_rag.config.models import AppConfig, VLLMConfig
-from sustech_rag.llm.base import OpenAICompatibleEndpoint
+from sustech_rag.llm.base import OpenAICompatibleClientBase, OpenAICompatibleEndpoint
 
 
-class VLLMClient:
+class VLLMClient(OpenAICompatibleClientBase):
     """OpenAI-compatible vLLM client; does not manage the server process."""
 
     def __init__(self, config: AppConfig) -> None:
         if not isinstance(config.llm, VLLMConfig):
             raise TypeError("VLLMClient requires a vllm configuration.")
-        self._endpoint = OpenAICompatibleEndpoint(
-            model_path=config.llm.local_path,
-            host="127.0.0.1",
-            port=config.llm.server_port,
-            served_model_name=config.llm.served_model_name,
-            api_key=config.llm.api_key,
+        super().__init__(
+            endpoint=OpenAICompatibleEndpoint(
+                model_path=config.llm.local_path,
+                host="127.0.0.1",
+                port=config.llm.server_port,
+                served_model_name=config.llm.served_model_name,
+                api_key=config.llm.api_key,
+            ),
+            temperature=config.llm.temperature,
+            max_tokens=config.llm.max_tokens,
+            stop=config.llm.stop,
         )
-        self._temperature = config.llm.temperature
-        self._max_tokens = config.llm.max_tokens
-        self._stop = config.llm.stop
 
-    @property
-    def endpoint(self) -> OpenAICompatibleEndpoint:
-        return self._endpoint
+    def _extra_payload(self) -> dict[str, object]:
+        return {"model": self.endpoint.served_model_name}
 
-    def generate(self, messages: list[dict]) -> str:
-        payload: dict[str, object] = {
-            "model": self._endpoint.served_model_name,
-            "messages": messages,
-            "temperature": self._temperature,
-            "max_tokens": self._max_tokens,
-            "stream": False,
-        }
-        if self._stop:
-            payload["stop"] = self._stop
-        try:
-            resp = httpx.post(
-                f"{self._endpoint.base_url}/v1/chat/completions",
-                json=payload,
-                timeout=300,
-                headers=self._auth_headers(),
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            message = data["choices"][0].get("message", {})
-            return (message.get("content") or "").strip()
-        except httpx.HTTPError as exc:
-            raise RuntimeError(f"vLLM request failed: {exc}") from exc
+    def _extract_think_delta(self, delta: dict[str, object]) -> str:
+        return str(
+            delta.get("reasoning_content")
+            or delta.get("reasoning")
+            or delta.get("reasoning_text")
+            or ""
+        )
 
-    def generate_stream(
-        self,
-        messages: list[dict],
-        cancel_event: threading.Event | None = None,
-    ) -> Iterator[tuple[str, str]]:
-        payload: dict[str, object] = {
-            "model": self._endpoint.served_model_name,
-            "messages": messages,
-            "temperature": self._temperature,
-            "max_tokens": self._max_tokens,
-            "stream": True,
-        }
-        if self._stop:
-            payload["stop"] = self._stop
-        try:
-            with httpx.stream(
-                "POST",
-                f"{self._endpoint.base_url}/v1/chat/completions",
-                json=payload,
-                timeout=300,
-                headers=self._auth_headers(),
-            ) as resp:
-                resp.raise_for_status()
-                for line in resp.iter_lines():
-                    if cancel_event is not None and cancel_event.is_set():
-                        break
-                    if not line.startswith("data: "):
-                        continue
-                    data_str = line[6:]
-                    if data_str == "[DONE]":
-                        break
-                    try:
-                        data = json.loads(data_str)
-                        choices = data.get("choices", [])
-                        if not choices:
-                            continue
-                        delta = choices[0].get("delta", {})
-                        think = (
-                            delta.get("reasoning_content")
-                            or delta.get("reasoning")
-                            or delta.get("reasoning_text")
-                            or ""
-                        )
-                        text = delta.get("content", "")
-                        if think:
-                            yield ("think", think)
-                        if text:
-                            yield ("content", text)
-                    except json.JSONDecodeError:
-                        printable = data_str[:120]
-                        print(
-                            f"[sustech-rag] skipped malformed vLLM SSE JSON: {printable}",
-                            flush=True,
-                        )
-                        continue
-        except httpx.HTTPError as exc:
-            raise RuntimeError(f"vLLM stream request failed: {exc}") from exc
+    def _request_label(self) -> str:
+        return "vLLM"
 
-    def _auth_headers(self) -> dict[str, str]:
-        if not self._endpoint.api_key:
-            return {}
-        return {"Authorization": f"Bearer {self._endpoint.api_key}"}
+    def _malformed_sse_label(self) -> str:
+        return "vLLM SSE JSON"
 
 
 class VLLMLauncher:

@@ -37,10 +37,12 @@ class EmbeddingConfig(BaseModel):
 
 
 class RetrievalConfig(BaseModel):
+    mode: Literal["simple", "self_rag"] = "simple"
     similarity_top_k: int = 8
     sparse_top_k: int = 8
     sparse_enabled: bool = True
     rerank_top_n: int = 4
+    max_rounds: int = 2
     reranker_model: str
     reranker_local_path: str = ""
     reranker_device: str = ""

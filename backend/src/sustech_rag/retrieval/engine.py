@@ -53,10 +53,21 @@ class RetrievalEngine:
                 top_k=config.retrieval.sparse_top_k,
             )
 
-    def retrieve(self, query: str) -> list[RetrievedChunk]:
-        """先并行执行向量召回与 BM25 稀疏召回，RRF 融合后再重排序。"""
+    def retrieve(
+        self,
+        query: str,
+        *,
+        exclude_texts: set[str] | None = None,
+        top_n: int | None = None,
+    ) -> list[RetrievedChunk]:
+        """执行召回、融合与 rerank；可排除已见片段并控制返回数量。"""
+        final_top_n = top_n or self.config.retrieval.rerank_top_n
         if self._sparse is None:
-            return self._dense_retrieve_and_rerank(query)
+            return self._dense_retrieve_and_rerank(
+                query,
+                exclude_texts=exclude_texts,
+                top_n=final_top_n,
+            )
 
         with ThreadPoolExecutor(max_workers=2) as pool:
             dense_fut = pool.submit(self._dense_retrieve, query)
@@ -65,7 +76,8 @@ class RetrievalEngine:
             sparse = sparse_fut.result()
 
         fused = self._rrf_fusion(dense, sparse)
-        return self.reranker.rerank(query, fused, top_n=self.config.retrieval.rerank_top_n)
+        reranked = self.reranker.rerank(query, fused, top_n=None)
+        return self._finalize_chunks(reranked, exclude_texts=exclude_texts, top_n=final_top_n)
 
     def _dense_retrieve(self, query: str) -> list[RetrievedChunk]:
         """纯向量检索（不经 rerank）。"""
@@ -88,12 +100,40 @@ class RetrievalEngine:
             return []
         return self._sparse.search(query)
 
-    def _dense_retrieve_and_rerank(self, query: str) -> list[RetrievedChunk]:
+    def _dense_retrieve_and_rerank(
+        self,
+        query: str,
+        *,
+        exclude_texts: set[str] | None = None,
+        top_n: int | None = None,
+    ) -> list[RetrievedChunk]:
         """当稀疏检索关闭时的原始流程：向量检索 + 直接 rerank。"""
         chunks = self._dense_retrieve(query)
-        for c in chunks:
-            c.metadata["source"] = "dense"
-        return self.reranker.rerank(query, chunks, top_n=self.config.retrieval.rerank_top_n)
+        for chunk in chunks:
+            chunk.metadata["source"] = "dense"
+        reranked = self.reranker.rerank(query, chunks, top_n=None)
+        return self._finalize_chunks(
+            reranked,
+            exclude_texts=exclude_texts,
+            top_n=top_n or self.config.retrieval.rerank_top_n,
+        )
+
+    def _finalize_chunks(
+        self,
+        chunks: list[RetrievedChunk],
+        *,
+        exclude_texts: set[str] | None,
+        top_n: int,
+    ) -> list[RetrievedChunk]:
+        excluded = exclude_texts or set()
+        results: list[RetrievedChunk] = []
+        for chunk in chunks:
+            if chunk.text in excluded:
+                continue
+            results.append(chunk)
+            if len(results) >= top_n:
+                break
+        return results
 
     @staticmethod
     def _rrf_fusion(

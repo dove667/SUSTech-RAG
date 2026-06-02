@@ -31,10 +31,12 @@ embedding:
   dtype: "bfloat16"
 
 retrieval:
+  mode: "simple"
   similarity_top_k: 8
   sparse_top_k: 8
   sparse_enabled: true
   rerank_top_n: 4
+  max_rounds: 2
   reranker_model: "Qwen/Qwen3-Reranker-4B"
   reranker_local_path: "/data1/zsh/models/Qwen3-Reranker-4B"
   reranker_device: "cuda:2"

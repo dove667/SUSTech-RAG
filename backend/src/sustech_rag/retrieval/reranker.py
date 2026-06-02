@@ -46,14 +46,14 @@ class BGECrossEncoderReranker:
         self,
         query: str,
         candidates: list[RetrievedChunk],
-        top_n: int,
+        top_n: int | None,
     ) -> list[RetrievedChunk]:
         """
         根据查询语义对候选片段进行重排序并截取前 N 条。
         输入参数：
             query：用户查询文本。
             candidates：待重排序的候选片段列表。
-            top_n：返回结果的最大数量。
+            top_n：返回结果的最大数量；为空时返回完整排序结果。
         输出参数：
             list[RetrievedChunk]：按相关性从高到低排序后的片段列表。
         """
@@ -69,4 +69,6 @@ class BGECrossEncoderReranker:
             key=lambda item: item.score,
             reverse=True,
         )
+        if top_n is None:
+            return ranked
         return ranked[:top_n]

@@ -29,10 +29,12 @@ embedding:
   batch_size: 16
 
 retrieval:
+  mode: "simple"
   similarity_top_k: 8
   sparse_top_k: 8
   sparse_enabled: true
   rerank_top_n: 4
+  max_rounds: 2
   reranker_model: "BAAI/bge-reranker-v2-m3"
   reranker_local_path: "data/models/rerankers/BAAI/bge-reranker-v2-m3"
 

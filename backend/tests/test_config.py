@@ -16,6 +16,8 @@ def test_load_config() -> None:
     assert str(config.embedding.local_path).endswith(
         "data/models/embeddings/BAAI/bge-small-zh-v1.5"
     )
+    assert config.retrieval.mode == "simple"
+    assert config.retrieval.max_rounds == 2
     assert str(config.retrieval.reranker_local_path).endswith(
         "data/models/rerankers/BAAI/bge-reranker-v2-m3"
     )
@@ -50,6 +52,8 @@ def test_load_vllm_config_preserves_absolute_and_home_paths(
         "processing": {},
         "embedding": {"model_name": "embed", "device": "cuda:1", "dtype": "bfloat16"},
         "retrieval": {
+            "mode": "self_rag",
+            "max_rounds": 3,
             "reranker_model": "reranker",
             "reranker_device": "cuda:2",
             "reranker_dtype": "bf16",
@@ -69,6 +73,8 @@ def test_load_vllm_config_preserves_absolute_and_home_paths(
     assert isinstance(config.llm, VLLMConfig)
     assert config.embedding.device == "cuda:1"
     assert config.embedding.dtype == "bfloat16"
+    assert config.retrieval.mode == "self_rag"
+    assert config.retrieval.max_rounds == 3
     assert config.retrieval.reranker_device == "cuda:2"
     assert config.retrieval.reranker_dtype == "bf16"
     assert config.llm.local_path == str(absolute_model_dir.resolve())

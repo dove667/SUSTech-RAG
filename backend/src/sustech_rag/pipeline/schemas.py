@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 
+from sustech_rag.retrieval.reranker import RetrievedChunk
+
 
 @dataclass(slots=True)
 class RawDocument:
@@ -42,3 +44,28 @@ class ChunkedDocument:
         将文本块转换为字典形式。
         """
         return asdict(self)
+
+
+@dataclass(frozen=True, slots=True)
+class RetrievalDecision:
+    should_retrieve: bool
+    reason: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class ChunkRelevanceDecision:
+    candidate_index: int
+    relevant: bool
+    reason: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class SupportDecision:
+    supported: bool
+    reason: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class AnswerPlan:
+    chunks: list[RetrievedChunk]
+    requires_retrieval: bool

@@ -6,6 +6,8 @@ from contextlib import contextmanager
 
 from sustech_rag.config.models import AppConfig
 from sustech_rag.llm import create_llm_runtime
+from sustech_rag.pipeline.schemas import AnswerPlan
+from sustech_rag.pipeline.self_rag import SelfRAGController
 from sustech_rag.retrieval.engine import RetrievalEngine
 from sustech_rag.retrieval.reranker import RetrievedChunk
 
@@ -16,13 +18,12 @@ _DEFAULT_SYSTEM_PROMPT = (
     "如果用户询问与南方科技大学无关的问题，请礼貌拒绝回答。"
 )
 
-
 class GenerationCancelledError(RuntimeError):
     """当前请求在进入或执行生成流程时被取消。"""
 
 
 class RagService:
-    """封装检索与大模型生成的问答服务。"""
+    """封装 simple RAG 与 self-RAG 的检索编排与生成服务。"""
 
     def __init__(self, config: AppConfig) -> None:
         self.config = config
@@ -32,6 +33,7 @@ class RagService:
         self.llm_launcher = runtime.launcher
         self._request_slots = max(1, config.llm.max_concurrent_requests)
         self._request_semaphore = threading.BoundedSemaphore(self._request_slots)
+        self._self_rag = SelfRAGController(self.llm, config.retrieval.max_rounds)
 
     def _build_chat_messages(
         self, query: str, chunks: list[RetrievedChunk], history: list[dict]
@@ -67,8 +69,8 @@ class RagService:
 
     def answer(self, query: str) -> str:
         with self._acquire_request_slot():
-            chunks = self.retrieval.retrieve(query)
-            messages = self._build_chat_messages(query, chunks, [])
+            plan = self._plan_answer(query, [])
+            messages = self._build_chat_messages(query, plan.chunks, [])
             return self.llm.generate(messages)
 
     def answer_stream(
@@ -78,19 +80,19 @@ class RagService:
     ) -> Iterator[tuple[str, object]]:
         with self._acquire_request_slot(cancel_event):
             query = self._extract_last_user_query(messages)
-            chunks = self.retrieval.retrieve(query)
-
-            if cancel_event is not None and cancel_event.is_set():
-                raise GenerationCancelledError("generation cancelled")
-
-            if chunks:
-                yield ("reference", chunks)
-
             history = [m for m in messages if m.get("content", "").strip()]
             if history and history[-1].get("content", "").strip() == query:
                 history = history[:-1]
 
-            chat_messages = self._build_chat_messages(query, chunks, history)
+            plan = self._plan_answer(query, history)
+
+            if cancel_event is not None and cancel_event.is_set():
+                raise GenerationCancelledError("generation cancelled")
+
+            if plan.requires_retrieval and plan.chunks:
+                yield ("reference", plan.chunks)
+
+            chat_messages = self._build_chat_messages(query, plan.chunks, history)
 
             think_open = False
             for event_type, text in self.llm.generate_stream(
@@ -131,6 +133,45 @@ class RagService:
             "status": "ready" if all_ok else "error",
             "components": components,
         }
+
+    def _plan_answer(self, query: str, history: list[dict]) -> AnswerPlan:
+        if self.config.retrieval.mode != "self_rag":
+            return AnswerPlan(
+                chunks=self.retrieval.retrieve(query),
+                requires_retrieval=True,
+            )
+
+        decision = self._self_rag.should_retrieve(query, history)
+        if not decision.should_retrieve:
+            return AnswerPlan(chunks=[], requires_retrieval=False)
+
+        accumulated: list[RetrievedChunk] = []
+        accepted_texts: set[str] = set()
+        seen_texts: set[str] = set()
+
+        for _ in range(self._self_rag.max_rounds):
+            candidates = self.retrieval.retrieve(query, exclude_texts=seen_texts)
+            if not candidates:
+                break
+
+            seen_texts.update(chunk.text for chunk in candidates)
+            relevant = self._self_rag.filter_relevant_chunks(query, candidates)
+            if not relevant:
+                continue
+
+            for chunk in relevant:
+                if chunk.text in accepted_texts:
+                    continue
+                accepted_texts.add(chunk.text)
+                accumulated.append(chunk)
+
+            draft_messages = self._build_chat_messages(query, accumulated, history)
+            draft_answer = self.llm.generate(draft_messages)
+            support = self._self_rag.is_answer_supported(query, draft_answer, accumulated)
+            if support.supported:
+                return AnswerPlan(chunks=accumulated, requires_retrieval=True)
+
+        return AnswerPlan(chunks=accumulated, requires_retrieval=True)
 
     @contextmanager
     def _acquire_request_slot(

@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import threading
-from collections.abc import Iterator
+from collections.abc import Generator, Iterator
 from contextlib import contextmanager
-from typing import Generator
 
 from sustech_rag.config.models import AppConfig
 from sustech_rag.llm import create_llm_runtime
@@ -18,11 +17,26 @@ from sustech_rag.pipeline.self_rag import SelfRAGController
 from sustech_rag.retrieval.engine import RetrievalEngine
 from sustech_rag.retrieval.reranker import RetrievedChunk
 
-_DEFAULT_SYSTEM_PROMPT = (
-    "你是南方科技大学的校园知识库问答助手。请基于提供的检索上下文回答问题，"
-    "如果上下文不足，请明确说明, 不要编造信息。"
-    "请给出简洁、准确的中文回答，并尽量引用信息来源标题。"
-    "如果用户询问与南方科技大学无关的问题，请礼貌拒绝回答。"
+_SIMPLE_RAG_SYSTEM_PROMPT = (
+    "你是南方科技大学的校园知识库问答助手。"
+    "请优先依据提供的检索上下文回答用户问题。"
+    "如果检索上下文不足以支持答案，请明确说明当前知识库信息不足，不要编造事实。"
+    "若用户请求明显与南方科技大学校园知识库服务无关，请简短礼貌拒绝，并引导用户提问南方科技大学相关问题。"
+    "回答请使用中文，尽量简洁、准确；若使用了检索材料，尽量引用信息来源标题。"
+)
+
+_SELF_RAG_RETRIEVAL_SYSTEM_PROMPT = (
+    "你是南方科技大学的校园知识库问答助手。"
+    "当前问题已经过路由判断，需要依据提供的检索上下文回答。"
+    "请仅根据检索上下文与对话历史作答；如果证据不足或信息缺失，请明确说明，不要编造。"
+    "回答请使用中文，尽量简洁、准确，并尽量引用信息来源标题。"
+)
+
+_SELF_RAG_OUT_OF_SCOPE_SYSTEM_PROMPT = (
+    "你是南方科技大学的校园知识库问答助手。"
+    "当前请求已经被判定为超出服务范围。"
+    "请用 1 到 2 句中文礼貌拒绝，不要回答原问题本身。"
+    "同时引导用户提出与南方科技大学校园信息、机构、课程、招生、科研、办事流程或公开通知相关的问题。"
 )
 
 class GenerationCancelledError(RuntimeError):
@@ -43,14 +57,18 @@ class RagService:
         self._self_rag = SelfRAGController(self.llm, config.retrieval.max_rounds)
 
     def _build_chat_messages(
-        self, query: str, chunks: list[RetrievedChunk], history: list[dict]
+        self,
+        query: str,
+        chunks: list[RetrievedChunk],
+        history: list[dict],
+        system_prompt: str,
     ) -> list[dict]:
         """Build ChatML messages with system prompt + context + conversation history."""
         context = "\n\n".join(
             f"[{idx + 1}] {chunk.metadata.get('title', 'Untitled')}\n{chunk.text}"
             for idx, chunk in enumerate(chunks)
         )
-        system_content = _DEFAULT_SYSTEM_PROMPT
+        system_content = system_prompt
         if chunks:
             system_content += f"\n\n检索上下文：\n{context}"
 
@@ -77,7 +95,7 @@ class RagService:
     def answer(self, query: str) -> str:
         with self._acquire_request_slot():
             plan = self._plan_answer(query, [])
-            messages = self._build_chat_messages(query, plan.chunks, [])
+            messages = self._build_chat_messages(query, plan.chunks, [], plan.system_prompt)
             return self.llm.generate(messages)
 
     def answer_stream(
@@ -101,7 +119,12 @@ class RagService:
             if cancel_event is not None and cancel_event.is_set():
                 raise GenerationCancelledError("generation cancelled")
 
-            chat_messages = self._build_chat_messages(query, plan.chunks, history)
+            chat_messages = self._build_chat_messages(
+                query,
+                plan.chunks,
+                history,
+                plan.system_prompt,
+            )
 
             think_open = False
             for event_type, text in self.llm.generate_stream(
@@ -170,6 +193,7 @@ class RagService:
             plan = AnswerPlan(
                 chunks=self.retrieval.retrieve(query),
                 requires_retrieval=True,
+                system_prompt=_SIMPLE_RAG_SYSTEM_PROMPT,
             )
             if emit_debug_events and plan.chunks:
                 yield ("reference", plan.chunks)
@@ -185,6 +209,7 @@ class RagService:
             return AnswerPlan(
                 chunks=[],
                 requires_retrieval=False,
+                system_prompt=_SELF_RAG_OUT_OF_SCOPE_SYSTEM_PROMPT,
                 debug_events=debug_events,
             )
 
@@ -226,7 +251,12 @@ class RagService:
             if emit_debug_events and newly_accepted:
                 yield ("reference", newly_accepted)
 
-            draft_messages = self._build_chat_messages(query, accumulated, history)
+            draft_messages = self._build_chat_messages(
+                query,
+                accumulated,
+                history,
+                _SELF_RAG_RETRIEVAL_SYSTEM_PROMPT,
+            )
             draft_answer = self.llm.generate(draft_messages)
             support = self._self_rag.is_answer_supported(query, draft_answer, accumulated)
             support_event = self._build_support_decision_event(round_index, support)
@@ -237,12 +267,14 @@ class RagService:
                 return AnswerPlan(
                     chunks=accumulated,
                     requires_retrieval=True,
+                    system_prompt=_SELF_RAG_RETRIEVAL_SYSTEM_PROMPT,
                     debug_events=debug_events,
                 )
 
         return AnswerPlan(
             chunks=accumulated,
             requires_retrieval=True,
+            system_prompt=_SELF_RAG_RETRIEVAL_SYSTEM_PROMPT,
             debug_events=debug_events,
         )
 
@@ -252,7 +284,11 @@ class RagService:
     ) -> SelfRAGDebugEvent:
         thought = (
             decision.reason.strip()
-            or ("这个问题需要先查资料。" if decision.should_retrieve else "这个问题可以直接回答。")
+            or (
+                "这个问题需要先查资料。"
+                if decision.should_retrieve
+                else "这个问题不在南科大知识库问答范围内。"
+            )
         )
         return SelfRAGDebugEvent(
             event="retrieval.decision",
@@ -310,7 +346,11 @@ class RagService:
     ) -> SelfRAGDebugEvent:
         thought = (
             decision.reason.strip()
-            or ("现有证据已经足够支撑回答。" if decision.supported else "现有证据还不够，需要继续查。")
+            or (
+                "现有证据已经足够支撑回答。"
+                if decision.supported
+                else "现有证据还不够，需要继续查。"
+            )
         )
         return SelfRAGDebugEvent(
             event="support.decision",

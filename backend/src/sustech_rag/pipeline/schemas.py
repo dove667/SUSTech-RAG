@@ -69,7 +69,8 @@ class SupportDecision:
 class AnswerPlan:
     chunks: list[RetrievedChunk]
     requires_retrieval: bool
-    debug_events: list["SelfRAGDebugEvent"] = field(default_factory=list)
+    system_prompt: str = ""
+    debug_events: list[SelfRAGDebugEvent] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)

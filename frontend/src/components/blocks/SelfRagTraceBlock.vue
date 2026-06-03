@@ -70,9 +70,9 @@ function toggleSnippet(id) {
           <span
             v-if="event.type === 'retrieval.decision'"
             class="status"
-            :class="event.should_retrieve ? 'yes' : 'no'"
+            :class="event.should_retrieve ? 'yes' : 'warn'"
           >
-            {{ event.should_retrieve ? '需要检索' : '直接回答' }}
+            {{ event.should_retrieve ? '需要检索' : '拒绝服务' }}
           </span>
           <span
             v-else-if="event.type === 'support.decision'"
@@ -248,9 +248,9 @@ function toggleSnippet(id) {
   color: #0f7a46;
 }
 
-.status.no {
-  background: #fff1f0;
-  color: #c2410c;
+.status.warn {
+  background: #fdf2d9;
+  color: #9a6700;
 }
 
 .status.neutral {

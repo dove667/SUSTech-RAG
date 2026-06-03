@@ -3,10 +3,15 @@ from __future__ import annotations
 import threading
 from types import SimpleNamespace
 
-from sustech_rag.pipeline.rag_service import RagService
-from sustech_rag.pipeline.self_rag import SelfRAGController
-from sustech_rag.pipeline.schemas import ChunkRelevanceDecision
 from sustech_rag.llm.base import OpenAICompatibleClientBase, OpenAICompatibleEndpoint
+from sustech_rag.pipeline.rag_service import (
+    _SELF_RAG_OUT_OF_SCOPE_SYSTEM_PROMPT,
+    _SELF_RAG_RETRIEVAL_SYSTEM_PROMPT,
+    _SIMPLE_RAG_SYSTEM_PROMPT,
+    RagService,
+)
+from sustech_rag.pipeline.schemas import ChunkRelevanceDecision
+from sustech_rag.pipeline.self_rag import SelfRAGController
 from sustech_rag.retrieval.reranker import RetrievedChunk
 
 
@@ -29,8 +34,16 @@ def test_self_rag_controller_parses_json_decisions() -> None:
     llm = FakeJudgeLLM(
         [
             '{"should_retrieve": true, "reason": "需要校园事实"}',
-            '{"assessments": [{"candidate_index": 1, "relevant": false, "reason": "不相关"}, {"candidate_index": 2, "relevant": true, "reason": "第二篇最相关"}]}',
-            '{"assessments": [{"candidate_index": 1, "relevant": false, "reason": "不相关"}, {"candidate_index": 2, "relevant": true, "reason": "第二篇最相关"}]}',
+            (
+                '{"assessments": [{"candidate_index": 1, "relevant": false, '
+                '"reason": "不相关"}, {"candidate_index": 2, "relevant": true, '
+                '"reason": "第二篇最相关"}]}'
+            ),
+            (
+                '{"assessments": [{"candidate_index": 1, "relevant": false, '
+                '"reason": "不相关"}, {"candidate_index": 2, "relevant": true, '
+                '"reason": "第二篇最相关"}]}'
+            ),
             '{"supported": true, "reason": "证据充分"}',
         ]
     )
@@ -52,6 +65,36 @@ def test_self_rag_controller_parses_json_decisions() -> None:
     ]
     assert [chunk.text for chunk in relevant] == ["B"]
     assert support.supported is True
+
+
+def test_self_rag_controller_parses_string_bools_strictly() -> None:
+    llm = FakeJudgeLLM(
+        [
+            '{"should_retrieve": "true", "reason": "需要校园事实"}',
+            (
+                '{"assessments": [{"candidate_index": 1, "relevant": "false", '
+                '"reason": "不相关"}, {"candidate_index": 2, "relevant": "true", '
+                '"reason": "第二篇最相关"}]}'
+            ),
+            '{"supported": "false", "reason": "证据不足"}',
+        ]
+    )
+    controller = SelfRAGController(llm, max_rounds=2)
+    chunks = [
+        RetrievedChunk(text="A", score=0.1, metadata={"title": "Doc A"}),
+        RetrievedChunk(text="B", score=0.2, metadata={"title": "Doc B"}),
+    ]
+
+    decision = controller.should_retrieve("南科大有哪些学院？", [])
+    decisions = controller.assess_chunk_relevance("南科大有哪些学院？", chunks)
+    support = controller.is_answer_supported("南科大有哪些学院？", "有很多学院", [chunks[1]])
+
+    assert decision.should_retrieve is True
+    assert decisions == [
+        ChunkRelevanceDecision(candidate_index=1, relevant=False, reason="不相关"),
+        ChunkRelevanceDecision(candidate_index=2, relevant=True, reason="第二篇最相关"),
+    ]
+    assert support.supported is False
 
 
 class _DummyClient(OpenAICompatibleClientBase):
@@ -196,6 +239,7 @@ def test_self_rag_can_skip_retrieval() -> None:
 
     assert plan.requires_retrieval is False
     assert plan.chunks == []
+    assert plan.system_prompt == _SELF_RAG_OUT_OF_SCOPE_SYSTEM_PROMPT
     assert [event.event for event in plan.debug_events] == ["retrieval.decision"]
     assert plan.debug_events[0].payload["should_retrieve"] is False
     assert service.retrieval.calls == []
@@ -219,6 +263,7 @@ def test_self_rag_retries_with_seen_chunk_exclusion() -> None:
     plan = service._plan_answer("南科大有哪些学院？", [])
 
     assert plan.requires_retrieval is True
+    assert plan.system_prompt == _SELF_RAG_RETRIEVAL_SYSTEM_PROMPT
     assert [chunk.text for chunk in plan.chunks] == ["Doc-1", "Doc-2"]
     assert [event.event for event in plan.debug_events] == [
         "retrieval.decision",
@@ -260,3 +305,36 @@ def test_answer_stream_emits_self_rag_events_round_by_round() -> None:
     second_reference = events[5][1]
     assert [chunk.text for chunk in first_reference] == ["Doc-1"]
     assert [chunk.text for chunk in second_reference] == ["Doc-2"]
+
+
+def test_self_rag_marks_out_of_scope_with_dedicated_prompt() -> None:
+    service = _make_service(
+        FakeRetrieval([]),
+        FakeAnswerLLM(),
+        FakeSelfRAG(should_retrieve=False, relevant_rounds=[], supported=[]),
+    )
+
+    plan = service._plan_answer("火星上有学校吗？", [])
+
+    assert plan.requires_retrieval is False
+    assert plan.system_prompt == _SELF_RAG_OUT_OF_SCOPE_SYSTEM_PROMPT
+
+
+def test_simple_mode_uses_simple_rag_prompt() -> None:
+    chunk = RetrievedChunk(text="Doc-1", score=0.9, metadata={"title": "Doc 1"})
+    service = object.__new__(RagService)
+    service.config = SimpleNamespace(retrieval=SimpleNamespace(mode="simple"))
+    service.retrieval = FakeRetrieval([[chunk]])
+    service.llm = FakeAnswerLLM()
+    service.llm_launcher = SimpleNamespace(verify=lambda: (True, "ok"))
+    service._request_slots = 1
+    service._request_semaphore = threading.BoundedSemaphore(1)
+    service._self_rag = FakeSelfRAG(
+        should_retrieve=True,
+        relevant_rounds=[[chunk]],
+        supported=[True],
+    )
+
+    plan = service._plan_answer("南科大有哪些学院？", [])
+
+    assert plan.system_prompt == _SIMPLE_RAG_SYSTEM_PROMPT

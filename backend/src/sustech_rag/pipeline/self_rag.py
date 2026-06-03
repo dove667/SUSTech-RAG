@@ -12,24 +12,27 @@ from sustech_rag.pipeline.schemas import (
 from sustech_rag.retrieval.reranker import RetrievedChunk
 
 _ROUTER_SYSTEM_PROMPT = (
-    "你是南方科技大学校园知识库问答系统的检索路由器。"
-    "知识库里保存的是与南方科技大学有关的公开网页信息。"
-    "只有当用户问题需要查询、核实或引用南方科技大学相关事实信息时，才应触发检索。"
-    "如果问题只是问候、闲聊、助手自我介绍、表达感谢、简单改写，"
-    "或者根本不需要查询南方科技大学相关信息，就不应检索。"
-    "只返回 JSON。"
+    "你是南方科技大学校园知识库问答系统的请求路由器。"
+    "你的任务只有一个：判断用户请求是否属于南方科技大学校园知识库的服务范围。"
+    "如果请求需要查询、核实、引用或回答与南方科技大学相关的事实信息，"
+    "就设置 should_retrieve=true。"
+    "如果请求与南方科技大学无关，或者不是南方科技大学校园知识库应处理的问题，"
+    "就设置 should_retrieve=false。"
+    "输出必须是单个 JSON 对象，不要输出 Markdown，不要输出代码块。"
 )
 
 _RELEVANCE_SYSTEM_PROMPT = (
-    "你是一个检索过滤器。请根据问题判断候选文档是否相关。"
-    "相关表示文档能直接帮助回答问题，而不是只提到同名实体。"
-    "只返回 JSON。"
+    "你是一个严格的检索过滤器。"
+    "只有当候选文档能直接支持回答用户问题时，才标记为相关。"
+    "仅仅共享关键词、只提到同名实体、或者只有很弱的间接关联，都应标记为不相关。"
+    "输出必须是单个 JSON 对象，不要输出 Markdown，不要输出代码块。"
 )
 
 _SUPPORT_SYSTEM_PROMPT = (
-    "你是一个事实支持性审查器。请判断回答是否被提供的文档片段充分支持。"
-    "如果回答包含文档里没有明确给出的关键信息，就视为不充分支持。"
-    "只返回 JSON。"
+    "你是一个严格的事实支持性审查器。"
+    "请判断候选回答中的关键事实是否都能被提供的证据片段直接支持。"
+    "如果回答包含证据中没有明确给出的关键信息、推断过度、范围扩大或措辞过满，就视为不充分支持。"
+    "输出必须是单个 JSON 对象，不要输出 Markdown，不要输出代码块。"
 )
 
 class SelfRAGController:
@@ -42,15 +45,19 @@ class SelfRAGController:
     def should_retrieve(self, query: str, history: list[dict]) -> RetrievalDecision:
         history_text = self._format_history(history)
         user_prompt = (
-            "请判断下面这个问题，是否需要先检索南方科技大学相关知识库再回答。\n"
-            "只有在回答依赖南方科技大学相关事实信息时，才选择 should_retrieve=true。\n"
+            "请判断下面这个请求是否属于南方科技大学校园知识库的服务范围。\n"
+            "规则：\n"
+            "- 若问题需要南方科技大学相关事实、政策、机构、课程、活动、人物、地点、时间等信息，"
+            "should_retrieve=true。\n"
+            "- 若请求与南方科技大学无关，或者不属于校园知识库问答应处理的请求，"
+            "should_retrieve=false。\n"
             f"对话历史：\n{history_text}\n\n"
             f"用户问题：{query}\n\n"
             '输出 JSON，格式为 {"should_retrieve": true, "reason": "..."}。'
         )
         data = self._generate_json(_ROUTER_SYSTEM_PROMPT, user_prompt)
         return RetrievalDecision(
-            should_retrieve=bool(data.get("should_retrieve", True)),
+            should_retrieve=self._parse_bool(data.get("should_retrieve"), default=True),
             reason=str(data.get("reason", "")),
         )
 
@@ -70,7 +77,8 @@ class SelfRAGController:
             f"用户问题：{query}\n\n"
             "下面是候选文档，请逐条判断是否真正相关。\n\n"
             f"{joined_docs}\n\n"
-            '输出 JSON，格式为 {"assessments": [{"candidate_index": 1, "relevant": true, "reason": "..."}]}。'
+            '输出 JSON，格式为 '
+            '{"assessments": [{"candidate_index": 1, "relevant": true, "reason": "..."}]}。'
         )
         data = self._generate_json(_RELEVANCE_SYSTEM_PROMPT, user_prompt)
         decisions: list[ChunkRelevanceDecision] = []
@@ -84,7 +92,7 @@ class SelfRAGController:
                 decisions.append(
                     ChunkRelevanceDecision(
                         candidate_index=raw_idx,
-                        relevant=bool(raw_item.get("relevant", False)),
+                        relevant=self._parse_bool(raw_item.get("relevant"), default=False),
                         reason=str(raw_item.get("reason", "")),
                     )
                 )
@@ -124,7 +132,7 @@ class SelfRAGController:
         )
         data = self._generate_json(_SUPPORT_SYSTEM_PROMPT, user_prompt)
         return SupportDecision(
-            supported=bool(data.get("supported", False)),
+            supported=self._parse_bool(data.get("supported"), default=False),
             reason=str(data.get("reason", "")),
         )
 
@@ -152,6 +160,19 @@ class SelfRAGController:
         if not isinstance(data, dict):
             raise RuntimeError(f"self-RAG judge returned non-object JSON: {text}")
         return data
+
+    @staticmethod
+    def _parse_bool(value: object, *, default: bool) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized == "true":
+                return True
+            if normalized == "false":
+                return False
+        return default
+
 
     @staticmethod
     def _format_history(history: list[dict]) -> str:

@@ -9,12 +9,7 @@ const props = defineProps({
   emptyHint:  { type: String, default: '你可以用自然语言提问，我会结合知识库回答。' },
   suggestions: {
     type: Array,
-    default: () => [
-      '什么是 RAG？它的核心思想是什么？',
-      '给我一段 Python 写的向量检索示例',
-      '解释公式 $P(y|x) = \\sum_z P(y|x,z) P(z|x)$',
-      '如何降低大模型的幻觉？',
-    ],
+    default: () => [],
   },
 });
 const emit = defineEmits(['pick-suggestion']);
@@ -68,7 +63,7 @@ watch(() => props.messages.length, () => scrollToBottom(true));
             <h1>{{ emptyTitle }}</h1>
             <p>{{ emptyHint }}</p>
           </div>
-          <div class="suggestions">
+          <div v-if="suggestions.length" class="suggestions">
             <button
               v-for="(s, i) in suggestions"
               :key="i"

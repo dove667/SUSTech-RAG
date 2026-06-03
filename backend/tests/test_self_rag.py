@@ -229,3 +229,34 @@ def test_self_rag_retries_with_seen_chunk_exclusion() -> None:
     ]
     assert retrieval.calls == [set(), {"Doc-1"}]
     assert len(llm.generate_calls) == 2
+
+
+def test_answer_stream_emits_self_rag_events_round_by_round() -> None:
+    first = RetrievedChunk(text="Doc-1", score=0.9, metadata={"title": "Doc 1"})
+    second = RetrievedChunk(text="Doc-2", score=0.8, metadata={"title": "Doc 2"})
+    service = _make_service(
+        FakeRetrieval([[first], [second]]),
+        FakeAnswerLLM(),
+        FakeSelfRAG(
+            should_retrieve=True,
+            relevant_rounds=[[first], [second]],
+            supported=[False, True],
+        ),
+    )
+
+    events = list(service.answer_stream([{"role": "user", "content": "南科大有哪些学院？"}]))
+
+    assert [event for event, _ in events] == [
+        "retrieval.decision",
+        "retrieval.assessment",
+        "reference",
+        "support.decision",
+        "retrieval.assessment",
+        "reference",
+        "support.decision",
+        "content.delta",
+    ]
+    first_reference = events[2][1]
+    second_reference = events[5][1]
+    assert [chunk.text for chunk in first_reference] == ["Doc-1"]
+    assert [chunk.text for chunk in second_reference] == ["Doc-2"]

@@ -3,6 +3,7 @@ from __future__ import annotations
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
+from typing import Generator
 
 from sustech_rag.config.models import AppConfig
 from sustech_rag.llm import create_llm_runtime
@@ -90,16 +91,15 @@ class RagService:
             if history and history[-1].get("content", "").strip() == query:
                 history = history[:-1]
 
-            plan = self._plan_answer(query, history)
+            plan = yield from self._plan_answer_stream(
+                query,
+                history,
+                cancel_event=cancel_event,
+                emit_debug_events=True,
+            )
 
             if cancel_event is not None and cancel_event.is_set():
                 raise GenerationCancelledError("generation cancelled")
-
-            for debug_event in plan.debug_events:
-                yield (debug_event.event, debug_event.payload)
-
-            if plan.requires_retrieval and plan.chunks:
-                yield ("reference", plan.chunks)
 
             chat_messages = self._build_chat_messages(query, plan.chunks, history)
 
@@ -144,15 +144,43 @@ class RagService:
         }
 
     def _plan_answer(self, query: str, history: list[dict]) -> AnswerPlan:
+        return self._consume_answer_plan_stream(
+            self._plan_answer_stream(query, history, emit_debug_events=False)
+        )
+
+    def _consume_answer_plan_stream(
+        self,
+        stream: Generator[tuple[str, object], None, AnswerPlan],
+    ) -> AnswerPlan:
+        while True:
+            try:
+                next(stream)
+            except StopIteration as stop:
+                return stop.value
+
+    def _plan_answer_stream(
+        self,
+        query: str,
+        history: list[dict],
+        *,
+        cancel_event: threading.Event | None = None,
+        emit_debug_events: bool,
+    ) -> Generator[tuple[str, object], None, AnswerPlan]:
         if self.config.retrieval.mode != "self_rag":
-            return AnswerPlan(
+            plan = AnswerPlan(
                 chunks=self.retrieval.retrieve(query),
                 requires_retrieval=True,
             )
+            if emit_debug_events and plan.chunks:
+                yield ("reference", plan.chunks)
+            return plan
 
         debug_events: list[SelfRAGDebugEvent] = []
         decision = self._self_rag.should_retrieve(query, history)
-        debug_events.append(self._build_retrieval_decision_event(decision))
+        decision_event = self._build_retrieval_decision_event(decision)
+        debug_events.append(decision_event)
+        if emit_debug_events:
+            yield (decision_event.event, decision_event.payload)
         if not decision.should_retrieve:
             return AnswerPlan(
                 chunks=[],
@@ -165,15 +193,20 @@ class RagService:
         seen_texts: set[str] = set()
 
         for round_index in range(1, self._self_rag.max_rounds + 1):
+            if cancel_event is not None and cancel_event.is_set():
+                raise GenerationCancelledError("generation cancelled")
             candidates = self.retrieval.retrieve(query, exclude_texts=seen_texts)
             if not candidates:
                 break
 
             seen_texts.update(chunk.text for chunk in candidates)
             assessments = self._self_rag.assess_chunk_relevance(query, candidates)
-            debug_events.append(
-                self._build_retrieval_assessment_event(round_index, candidates, assessments)
+            assessment_event = self._build_retrieval_assessment_event(
+                round_index, candidates, assessments
             )
+            debug_events.append(assessment_event)
+            if emit_debug_events:
+                yield (assessment_event.event, assessment_event.payload)
             relevant = self._self_rag.filter_relevant_chunks(
                 query,
                 candidates,
@@ -182,16 +215,24 @@ class RagService:
             if not relevant:
                 continue
 
+            newly_accepted: list[RetrievedChunk] = []
             for chunk in relevant:
                 if chunk.text in accepted_texts:
                     continue
                 accepted_texts.add(chunk.text)
                 accumulated.append(chunk)
+                newly_accepted.append(chunk)
+
+            if emit_debug_events and newly_accepted:
+                yield ("reference", newly_accepted)
 
             draft_messages = self._build_chat_messages(query, accumulated, history)
             draft_answer = self.llm.generate(draft_messages)
             support = self._self_rag.is_answer_supported(query, draft_answer, accumulated)
-            debug_events.append(self._build_support_decision_event(round_index, support))
+            support_event = self._build_support_decision_event(round_index, support)
+            debug_events.append(support_event)
+            if emit_debug_events:
+                yield (support_event.event, support_event.payload)
             if support.supported:
                 return AnswerPlan(
                     chunks=accumulated,
@@ -240,8 +281,12 @@ class RagService:
                 {
                     "candidate_index": idx,
                     "title": str(chunk.metadata.get("title") or "Untitled"),
+                    "url": str(chunk.metadata.get("source_url") or ""),
                     "source": str(chunk.metadata.get("source") or ""),
+                    "score": float(chunk.score),
                     "relevant": relevant,
+                    "snippet": chunk.text[:400] if len(chunk.text) > 400 else chunk.text,
+                    "full_text": chunk.text,
                     "thought": (
                         assessment.reason.strip()
                         if assessment is not None and assessment.reason.strip()

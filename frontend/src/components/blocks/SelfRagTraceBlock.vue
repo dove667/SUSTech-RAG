@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, reactive, ref } from 'vue';
 
 const props = defineProps({
   mode: { type: String, default: 'self_rag' },
@@ -7,6 +7,7 @@ const props = defineProps({
 });
 
 const expanded = ref(true);
+const snippetExpanded = reactive({});
 
 const stageLabel = {
   'retrieval.decision': '是否检索',
@@ -36,6 +37,10 @@ function assessmentSummary(items = []) {
   const relevantCount = items.filter(item => item.relevant).length;
   if (!items.length) return '本轮没有候选资料。';
   return `保留 ${relevantCount} / ${items.length} 条资料`;
+}
+
+function toggleSnippet(id) {
+  snippetExpanded[id] = !snippetExpanded[id];
 }
 </script>
 
@@ -92,11 +97,35 @@ function assessmentSummary(items = []) {
           >
             <div class="item-head">
               <span class="item-index">#{{ item.candidate_index }}</span>
-              <span class="item-title">{{ item.title || '未命名资料' }}</span>
+              <a
+                v-if="item.url"
+                class="item-title link"
+                :href="item.url"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {{ item.title || '未命名资料' }}
+              </a>
+              <span v-else class="item-title">{{ item.title || '未命名资料' }}</span>
               <span v-if="item.source" class="source">{{ sourceLabel[item.source] || item.source }}</span>
               <span class="item-status">{{ item.relevant ? '保留' : '排除' }}</span>
             </div>
             <p v-if="item.thought" class="item-thought">{{ item.thought }}</p>
+            <div v-if="item.full_text" class="snippet-area">
+              <button
+                class="snippet-toggle"
+                type="button"
+                @click="toggleSnippet(`${event.id}_${item.candidate_index}`)"
+              >
+                {{ snippetExpanded[`${event.id}_${item.candidate_index}`] ? '收起检索原文' : '展开检索原文' }}
+              </button>
+              <div
+                v-if="snippetExpanded[`${event.id}_${item.candidate_index}`]"
+                class="snippet"
+              >
+                {{ item.full_text }}
+              </div>
+            </div>
           </li>
         </ul>
       </div>
@@ -280,6 +309,14 @@ function assessmentSummary(items = []) {
   font-weight: 600;
 }
 
+.item-title.link {
+  text-decoration: none;
+}
+
+.item-title.link:hover {
+  text-decoration: underline;
+}
+
 .item-status {
   margin-left: auto;
 }
@@ -289,5 +326,35 @@ function assessmentSummary(items = []) {
   color: var(--text-muted);
   font-size: 12px;
   line-height: 1.55;
+}
+
+.snippet-area {
+  margin-top: 8px;
+}
+
+.snippet-toggle {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--primary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.snippet-toggle:hover {
+  color: color-mix(in srgb, var(--primary) 82%, black);
+}
+
+.snippet {
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-elevated) 84%, transparent);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 </style>

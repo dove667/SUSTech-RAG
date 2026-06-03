@@ -216,6 +216,7 @@ export const useChat = defineStore('chat', {
           currentText = null;
         },
         onReference: (data) => {
+          if (msg.blocks.some(b => b.type === 'self_rag_trace')) return;
           const ref = getOrCreateBlock('reference');
           ref.items = [...(ref.items || []), ...(data.items || [])];
         },

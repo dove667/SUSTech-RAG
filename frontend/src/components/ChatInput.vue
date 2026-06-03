@@ -48,7 +48,6 @@ function onKey(e) {
       v-model="text"
       :placeholder="placeholder"
       rows="1"
-      :disabled="streaming"
       @keydown="onKey"
     />
     <div class="actions">

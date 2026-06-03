@@ -183,6 +183,7 @@ function timeOf(c) {
   display: grid;
   grid-template-columns: 280px 1fr;
   height: 100vh;
+  overflow: hidden;
   background: var(--bg);
 }
 
@@ -194,6 +195,8 @@ function timeOf(c) {
   background: var(--bg-elevated);
   border-right: 1px solid var(--border);
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 .brand {
   display: flex; align-items: center; gap: 10px;
@@ -273,6 +276,8 @@ function timeOf(c) {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 .topbar {
   display: flex; align-items: center; gap: 8px;

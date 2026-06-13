@@ -73,6 +73,11 @@ def has_self_closing_tag(text: str, tag: str) -> bool:
     return bool(re.search(rf"<{tag}\s*/>", text))
 
 
+def _has_tag(text: str, tag: str) -> bool:
+    """检查是否存在 <tag>...</tag> 或 <tag/>。"""
+    return bool(re.search(rf"<{tag}\b", text))
+
+
 def extract_tag_outer(text: str, tag: str) -> str:
     """提取 <tag>...</tag> 整段（含标签）。"""
     pattern = rf"<{tag}\b[^>]*>.*?</{tag}>"
@@ -194,9 +199,60 @@ _RETRIEVAL_SYSTEM = """你是南方科技大学的校园知识库问答助手。
 class SinglePassController:
     """单次生成多任务 RAG 控制器。"""
 
+    MAX_RETRIES = 1  # 格式错误时最多重试 1 次
+
     def __init__(self, llm: LLMClient, max_rounds: int = 2) -> None:
         self._llm = llm
         self.max_rounds = max(1, max_rounds)
+
+    # ------------------------------------------------------------------
+    # 容错生成：格式错误时追加纠正提示并重试
+    # ------------------------------------------------------------------
+
+    def _generate_with_xml_retry(
+        self,
+        messages: list[dict],
+        required_tags: list[str],
+        required_any_tag: list[str] | None = None,
+    ) -> str:
+        """生成并校验 XML 格式；格式错误时追加纠正提示重试一次。
+
+        Args:
+            messages: 初始消息列表（会被原地修改以追加纠正信息）。
+            required_tags: 必须全部出现的 XML 标签名。
+            required_any_tag: 至少出现其中之一的标签名。
+
+        Returns:
+            模型输出的原始文本。
+        """
+        text = self._llm.generate(messages)
+
+        for attempt in range(self.MAX_RETRIES + 1):
+            missing = [t for t in required_tags if not _has_tag(text, t)]
+            any_missing = (
+                required_any_tag is not None
+                and not any(_has_tag(text, t) for t in required_any_tag)
+            )
+            if not missing and not any_missing:
+                return text  # 格式正确
+
+            if attempt >= self.MAX_RETRIES:
+                # 最后一次重试仍失败 → 返回原始文本（调用方做最终兜底）
+                return text
+
+            # 构造纠正提示
+            correction = "\n\n【格式错误】你的上一次输出缺少以下必需的 XML 标签：\n"
+            for tag in missing:
+                correction += f"  - <{tag}>...</{tag}>\n"
+            if any_missing:
+                correction += (
+                    f"  并且必须包含以下标签之一：{' / '.join(required_any_tag)}\n"
+                )
+            correction += "\n请严格按照要求的 XML 格式重新输出完整内容。"
+            messages.append({"role": "user", "content": correction})
+            text = self._llm.generate(messages)
+
+        return text
 
     # ------------------------------------------------------------------
     # Step 1: 路由 + 可选直接回答

@@ -50,7 +50,7 @@ llm:
   gpu_layers: 32 # 加载模型时放在 GPU 上的层数；None = 不传 -ngl
   threads: null # None = 不传 -t，用 llama-server 默认 (-1=auto)
   threads_batch: 2 # 批处理线程数；None = 不传 -tb
-  enable_thinking: false  # 请求级别：是否让模型进行 thinking（Qwen3 等）
+  enable_thinking: true  # 请求级别：是否让模型进行 thinking（Qwen3 等）
   reasoning_parser: ""    # 启动级别：空字符串 = 不启用；"qwen3" / "deepseek-r1" = 启用对应 parser
   n_ctx: 8192
   temperature: 0.2

@@ -419,9 +419,13 @@ class RagService:
     ) -> Iterator[tuple[str, object]]:
         """单次生成流水线：路由→检索→分析→输出。"""
 
-        # ---- Step 1: 路由判断 ----
+        # ---- Step 1: 路由判断（含 XML 格式重试）----
         router_msgs = self._single_pass.build_router_messages(query, history)
-        router_text = self.llm.generate(router_msgs)
+        router_text = self._single_pass._generate_with_xml_retry(
+            router_msgs,
+            required_tags=["retrieval_decision", "should_retrieve"],
+            required_any_tag=None,
+        )
         if cancel_event is not None and cancel_event.is_set():
             raise GenerationCancelledError("generation cancelled")
         router = self._single_pass.parse_router_output(router_text)
@@ -488,11 +492,15 @@ class RagService:
             # 发送引用
             yield ("reference", candidates)
 
-            # 构建 prompt 并生成
+            # 构建 prompt 并生成（含 XML 格式重试）
             retrieval_msgs = self._single_pass.build_retrieval_messages(
                 query, candidates, history
             )
-            retrieval_text = self.llm.generate(retrieval_msgs)
+            retrieval_text = self._single_pass._generate_with_xml_retry(
+                retrieval_msgs,
+                required_tags=["relevance_analysis", "draft", "self_check"],
+                required_any_tag=["output", "need_more_retrieval"],
+            )
             if cancel_event is not None and cancel_event.is_set():
                 raise GenerationCancelledError("generation cancelled")
 

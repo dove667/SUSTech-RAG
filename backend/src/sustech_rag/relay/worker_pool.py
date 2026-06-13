@@ -20,6 +20,7 @@ class WorkerPool:
     def __init__(self) -> None:
         self._workers: dict[str, WorkerInfo] = {}
         self._lock = threading.Lock()
+        self._task_worker: dict[str, str] = {}  # task_id → worker_id
         self._heartbeat_thread: threading.Thread | None = None
         self._heartbeat_stop: threading.Event | None = None
 
@@ -35,6 +36,7 @@ class WorkerPool:
         调用方应通过返回的 JSON 文本回复 Worker。
         """
         now = time.time()
+        max_concurrent = max(1, int(capabilities.get("max_concurrent_requests", 1)))
         with self._lock:
             existing = self._workers.get(worker_id)
             if existing is not None:
@@ -43,8 +45,8 @@ class WorkerPool:
                 existing.capabilities = capabilities
                 existing.last_heartbeat = now
                 existing.connected_at = now
-                existing.is_busy = False
-                existing.current_task_id = None
+                existing.active_tasks = 0
+                existing.max_concurrent = max_concurrent
             else:
                 self._workers[worker_id] = WorkerInfo(
                     worker_id=worker_id,
@@ -52,10 +54,11 @@ class WorkerPool:
                     websocket=websocket,
                     connected_at=now,
                     last_heartbeat=now,
+                    max_concurrent=max_concurrent,
                 )
             print(
                 f"[relay] worker registered: {worker_id} "
-                f"(total: {len(self._workers)})",
+                f"(max_concurrent={max_concurrent}, total: {len(self._workers)})",
                 flush=True,
             )
 
@@ -64,9 +67,15 @@ class WorkerPool:
         with self._lock:
             worker = self._workers.pop(worker_id, None)
             if worker is not None:
+                # 清理该 Worker 的所有任务映射
+                stale_tasks = [
+                    tid for tid, wid in self._task_worker.items() if wid == worker_id
+                ]
+                for tid in stale_tasks:
+                    del self._task_worker[tid]
                 print(
                     f"[relay] worker unregistered: {worker_id} "
-                    f"(total: {len(self._workers)})",
+                    f"(cleaned {len(stale_tasks)} task mappings, total: {len(self._workers)})",
                     flush=True,
                 )
             return worker
@@ -76,9 +85,15 @@ class WorkerPool:
     # ------------------------------------------------------------------
 
     def get_available_worker(self) -> WorkerInfo | None:
-        """返回最优先的空闲 Worker（按生成速度降序），没有则返回 None。"""
+        """返回最优先的空闲 Worker（按生成速度降序），没有则返回 None。
+
+        空闲条件：active_tasks < max_concurrent。
+        """
         with self._lock:
-            idle = [w for w in self._workers.values() if not w.is_busy]
+            idle = [
+                w for w in self._workers.values()
+                if w.active_tasks < w.max_concurrent
+            ]
             if not idle:
                 return None
             # 按 tokens_per_second 降序（快的优先），无数据排最后
@@ -103,26 +118,36 @@ class WorkerPool:
     # ------------------------------------------------------------------
 
     def mark_busy(self, worker_id: str, task_id: str) -> bool:
-        """标记 Worker 为忙碌。返回 True 表示成功标记。"""
+        """递增 Worker 活跃任务数。成功返回 True，已达上限返回 False。"""
         with self._lock:
             worker = self._workers.get(worker_id)
             if worker is None:
                 return False
-            if worker.is_busy:
+            if worker.active_tasks >= worker.max_concurrent:
                 return False
-            worker.is_busy = True
-            worker.current_task_id = task_id
+            worker.active_tasks += 1
+            self._task_worker[task_id] = worker_id
             return True
 
-    def mark_idle(self, worker_id: str) -> bool:
-        """标记 Worker 为空闲。返回 True 表示成功标记。"""
+    def mark_idle(self, worker_id: str, task_id: str = "") -> bool:
+        """递减 Worker 活跃任务数（最小为 0）。返回 True 表示成功。"""
         with self._lock:
             worker = self._workers.get(worker_id)
             if worker is None:
                 return False
-            worker.is_busy = False
-            worker.current_task_id = None
+            if worker.active_tasks > 0:
+                worker.active_tasks -= 1
+            if task_id:
+                self._task_worker.pop(task_id, None)
             return True
+
+    def get_worker_for_task(self, task_id: str) -> WorkerInfo | None:
+        """根据 task_id 查找对应的 Worker。"""
+        with self._lock:
+            worker_id = self._task_worker.get(task_id)
+            if worker_id is None:
+                return None
+            return self._workers.get(worker_id)
 
     def update_heartbeat(self, worker_id: str) -> None:
         """更新 Worker 最近心跳时间。"""

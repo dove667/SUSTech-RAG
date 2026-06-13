@@ -88,6 +88,7 @@ class WorkerClient:
 
                 app_config = load_config(self.config_path)
                 caps["llm_backend"] = app_config.llm.backend
+                caps["max_concurrent_requests"] = max(1, app_config.llm.max_concurrent_requests)
                 if hasattr(app_config.llm, "model_path"):
                     caps["model"] = os.path.basename(app_config.llm.model_path) or "unknown"
                 elif hasattr(app_config.llm, "served_model_name"):

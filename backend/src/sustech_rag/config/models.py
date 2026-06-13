@@ -56,7 +56,7 @@ class VectorStoreConfig(BaseModel):
 
 class LLMSharedConfig(BaseModel):
     temperature: float = 0.2
-    max_tokens: int = 512
+    max_tokens: int = 2048
     max_concurrent_requests: int = 1
     stop: list[str] = Field(default_factory=list)
     server_port: int = 8081

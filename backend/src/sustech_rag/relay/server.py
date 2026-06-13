@@ -120,7 +120,7 @@ def create_relay_app() -> FastAPI:
 
                     # done / error 事件时标记 worker 空闲
                     if event_name in ("done", "error") and worker_id:
-                        pool.mark_idle(worker_id)
+                        pool.mark_idle(worker_id, task_id=tid)
 
                 else:
                     print(
@@ -146,7 +146,7 @@ def create_relay_app() -> FastAPI:
     async def api_health(response: Response) -> dict[str, Any]:
         """返回中继服务及已连接 Worker 的健康状态。"""
         workers = pool.get_all_workers()
-        idle = sum(1 for w in workers if not w.is_busy)
+        idle = sum(1 for w in workers if w.active_tasks < w.max_concurrent)
         busy = len(workers) - idle
         return {
             "status": "ok" if workers else "degraded",
@@ -185,8 +185,8 @@ def create_relay_app() -> FastAPI:
             {
                 "worker_id": w.worker_id,
                 "capabilities": w.capabilities,
-                "is_busy": w.is_busy,
-                "current_task_id": w.current_task_id,
+                "active_tasks": w.active_tasks,
+                "max_concurrent": w.max_concurrent,
                 "connected_at": w.connected_at,
                 "last_heartbeat": w.last_heartbeat,
             }
@@ -263,7 +263,7 @@ def create_relay_app() -> FastAPI:
         )
         send_ok = await _safe_send_json(worker.websocket, task_msg)
         if not send_ok:
-            pool.mark_idle(worker_id)
+            pool.mark_idle(worker_id, task_id=task_id)
             response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
             return Response(
                 content=json.dumps(
@@ -338,7 +338,7 @@ def create_relay_app() -> FastAPI:
             finally:
                 # 清理
                 app.state.task_events.pop(task_id, None)
-                pool.mark_idle(worker_id)
+                pool.mark_idle(worker_id, task_id=task_id)
 
         return StreamingResponse(
             sse_event_stream(),
@@ -365,13 +365,7 @@ def create_relay_app() -> FastAPI:
             response.status_code = status.HTTP_400_BAD_REQUEST
             return {"code": "bad_request", "message": "task_id is required"}
 
-        # 查找 task_id 对应的 worker
-        workers = pool.get_all_workers()
-        target_worker = None
-        for w in workers:
-            if w.current_task_id == task_id:
-                target_worker = w
-                break
+        target_worker = pool.get_worker_for_task(task_id)
 
         if target_worker is None:
             response.status_code = status.HTTP_404_NOT_FOUND

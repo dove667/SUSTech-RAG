@@ -17,8 +17,8 @@ class WorkerInfo:
         websocket: 与该 Worker 建立的 WebSocket 连接对象。
         connected_at: 连接建立时间戳。
         last_heartbeat: 最近一次心跳时间戳。
-        current_task_id: 当前正在处理的任务 ID，空闲时为 None。
-        is_busy: 是否正在处理任务。
+        active_tasks: 当前正在处理的任务数。
+        max_concurrent: 该 Worker 允许的最大并发任务数。
     """
 
     worker_id: str
@@ -26,8 +26,13 @@ class WorkerInfo:
     websocket: Any  # starlette / fastapi WebSocket 对象
     connected_at: float = field(default_factory=time.time)
     last_heartbeat: float = field(default_factory=time.time)
-    current_task_id: str | None = None
-    is_busy: bool = False
+    active_tasks: int = 0
+    max_concurrent: int = 1
+
+    @property
+    def is_busy(self) -> bool:
+        """向后兼容：是否已达到并发上限。"""
+        return self.active_tasks >= self.max_concurrent
 
 
 @dataclass

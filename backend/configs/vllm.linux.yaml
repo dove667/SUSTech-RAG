@@ -49,7 +49,7 @@ vector_store:
 llm:
   backend: "vllm"
   temperature: 0.2
-  max_tokens: 1024
+  max_tokens: 2048
   max_concurrent_requests: 32
   stop:
     - "<|im_end|>"

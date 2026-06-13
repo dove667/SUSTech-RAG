@@ -11,6 +11,62 @@ from sustech_rag.pipeline.schemas import (
 )
 from sustech_rag.retrieval.reranker import RetrievedChunk
 
+
+def _salvage_truncated_json(text: str) -> str | None:
+    """Try to fix a truncated JSON string by closing unclosed braces/brackets/quotes.
+
+    Returns repaired JSON string, or None if repair is not possible.
+    """
+    s = text.rstrip()
+    if not s:
+        return None
+
+    # Cut off trailing non-JSON garbage (e.g. leaked special tokens like 发生).
+    # Scan left-to-right, skip over quoted strings; cut at first non-JSON char outside strings.
+    _JSON_SAFE = set('{}[]":, \t\n\r0123456789-.truefalsn')
+    in_string = False
+    cut_pos = len(s)
+    for i, ch in enumerate(s):
+        if ch == '"':
+            in_string = not in_string
+            continue
+        if not in_string and ch not in _JSON_SAFE:
+            cut_pos = i
+            break
+    s = s[:cut_pos]
+
+    # Strip trailing commas (invalid JSON: [1,2,] or {"a":1,})
+    s = s.rstrip().rstrip(',').rstrip()
+
+    # Use a stack to track unclosed constructs in FILO order
+    stack: list[str] = []
+    in_string = False
+    for ch in s:
+        if ch == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if ch == '{':
+            stack.append('}')
+        elif ch == '[':
+            stack.append(']')
+        elif ch in ('}', ']'):
+            if stack and stack[-1] == ch:
+                stack.pop()
+
+    # Close string first (before closing structural brackets)
+    if in_string:
+        s += '"'
+
+    # Close remaining constructs in reverse order (FILO)
+    s += ''.join(reversed(stack))
+
+    if not s.strip():
+        return None
+    return s
+
+
 _ROUTER_SYSTEM_PROMPT = (
     "你是南方科技大学校园知识库问答系统的请求路由器。"
     "你的任务只有一个：判断用户请求是否属于南方科技大学校园知识库的服务范围。"
@@ -213,15 +269,40 @@ class SelfRAGController:
         if cleaned.startswith("```"):
             cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
             cleaned = re.sub(r"\s*```$", "", cleaned)
+
+        candidates: list[str] = []
+
+        # 候选1: 直接解析整个文本（去除尾部垃圾）
+        candidates.append(cleaned)
+
+        # 候选2: 提取最长的 { ... } 对
         match = re.search(r"\{.*\}", cleaned, re.DOTALL)
-        candidate = match.group(0) if match else cleaned
-        try:
-            data = json.loads(candidate)
-        except json.JSONDecodeError as exc:
-            raise RuntimeError(f"self-RAG judge returned invalid JSON: {text}") from exc
-        if not isinstance(data, dict):
-            raise RuntimeError(f"self-RAG judge returned non-object JSON: {text}")
-        return data
+        if match:
+            candidates.insert(0, match.group(0))
+
+        errors: list[str] = []
+        for candidate in candidates:
+            # 尝试直接解析
+            try:
+                data = json.loads(candidate)
+                if isinstance(data, dict):
+                    return data
+            except json.JSONDecodeError as exc:
+                errors.append(f"{exc}")
+
+            # 尝试补全截断的 JSON：补缺失的 } ] "
+            salvaged = _salvage_truncated_json(candidate)
+            if salvaged is not None:
+                try:
+                    data = json.loads(salvaged)
+                    if isinstance(data, dict):
+                        return data
+                except json.JSONDecodeError as exc:
+                    errors.append(f"salvage: {exc}")
+
+        raise RuntimeError(
+            f"self-RAG judge returned invalid JSON. Errors: {'; '.join(errors)}. Raw: {text[:500]}"
+        )
 
     @staticmethod
     def _parse_bool(value: object, *, default: bool) -> bool:

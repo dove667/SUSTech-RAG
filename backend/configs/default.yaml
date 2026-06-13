@@ -54,7 +54,7 @@ llm:
   reasoning_parser: ""    # 启动级别：空字符串 = 不启用；"qwen3" / "deepseek-r1" = 启用对应 parser
   n_ctx: 8192
   temperature: 0.2
-  max_tokens: 512
+  max_tokens: 2048
   max_concurrent_requests: 1 # llama.cpp 阶段默认串行，后续可为 vLLM 放宽
   stop:
     - "<|im_end|>"

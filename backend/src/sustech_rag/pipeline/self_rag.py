@@ -79,9 +79,6 @@ _SUPPORT_SCHEMA = {
 class SelfRAGController:
     """负责 self-RAG 的检索判定、文档过滤与答案支持性判断。"""
 
-    # 中间 LLM 调用的 max_tokens（JSON 判定只需少量 token）
-    _JUDGE_MAX_TOKENS = 128
-
     def __init__(self, llm: LLMClient, max_rounds: int) -> None:
         self._llm = llm
         self.max_rounds = max(1, max_rounds)
@@ -186,7 +183,6 @@ class SelfRAGController:
         user_prompt: str,
         schema: dict | None = None,
     ) -> dict[str, object]:
-        max_tok = self._JUDGE_MAX_TOKENS
         # 优先使用结构化 / 约束生成
         if schema is not None and hasattr(self._llm, "generate_with_schema"):
             try:
@@ -196,7 +192,6 @@ class SelfRAGController:
                         {"role": "user", "content": user_prompt},
                     ],
                     schema,
-                    max_tokens=max_tok,
                 )
                 if result:  # 非空 dict 视为成功
                     return result
@@ -208,8 +203,7 @@ class SelfRAGController:
             [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
-            ],
-            max_tokens=max_tok,
+            ]
         )
         return self._extract_json_object(text)
 

@@ -68,8 +68,8 @@ class OpenAICompatibleClientBase(ABC):
     def endpoint(self) -> OpenAICompatibleEndpoint:
         return self._endpoint
 
-    def generate(self, messages: list[dict], max_tokens: int = 0) -> str:
-        payload = self._build_payload(messages, stream=False, max_tokens=max_tokens)
+    def generate(self, messages: list[dict]) -> str:
+        payload = self._build_payload(messages, stream=False)
         try:
             resp = httpx.post(
                 f"{self._endpoint.base_url}/v1/chat/completions",
@@ -129,11 +129,11 @@ class OpenAICompatibleClientBase(ABC):
         except httpx.HTTPError as exc:
             raise RuntimeError(f"{self._request_label()} stream request failed: {exc}") from exc
 
-    def _build_payload(self, messages: list[dict], stream: bool, max_tokens: int = 0) -> dict[str, object]:
+    def _build_payload(self, messages: list[dict], stream: bool) -> dict[str, object]:
         payload: dict[str, object] = {
             "messages": messages,
             "temperature": self._temperature,
-            "max_tokens": max_tokens if max_tokens > 0 else self._max_tokens,
+            "max_tokens": self._max_tokens,
             "stream": stream,
         }
         if self._stop:
@@ -163,9 +163,9 @@ class OpenAICompatibleClientBase(ABC):
     # structured / constrained generation
     # ------------------------------------------------------------------
 
-    def generate_with_schema(self, messages: list[dict], json_schema: dict, max_tokens: int = 0) -> dict[str, object]:
+    def generate_with_schema(self, messages: list[dict], json_schema: dict) -> dict[str, object]:
         """生成受 JSON schema 约束的输出，返回解析后的 dict；失败返回 {}。"""
-        payload = self._build_payload(messages, stream=False, max_tokens=max_tokens)
+        payload = self._build_payload(messages, stream=False)
         mode = self._structured_output_mode
         if mode == "json_schema":
             payload["response_format"] = {

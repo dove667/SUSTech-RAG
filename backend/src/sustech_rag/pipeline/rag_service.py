@@ -499,9 +499,11 @@ class RagService:
                     raise GenerationCancelledError("generation cancelled")
 
                 if event == "content.delta":
-                    # 实时转发 output 内容给用户
                     yield ("content.delta", data)
                     has_output = True
+                elif event == "think.delta":
+                    # 转发 LLM 思考过程
+                    yield ("think.delta", data)
                 elif event == "relevance_analysis":
                     yield ("retrieval.assessment", {
                         "round": round_idx,
@@ -523,9 +525,10 @@ class RagService:
                         "thought": data[:300],
                     })
                 elif event == "xml_error":
+                    # 格式错误，但 generate_and_stream 已重试过，转发为错误事件
                     yield ("retrieval.assessment", {
                         "round": round_idx,
-                        "thought": f"XML 格式异常: {data}",
+                        "thought": f"XML 格式异常（已重试）: {data}",
                         "items": [],
                     })
 

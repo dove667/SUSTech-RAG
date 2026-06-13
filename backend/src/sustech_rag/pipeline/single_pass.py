@@ -264,86 +264,110 @@ class SinglePassController:
         required_any_tag: list[str] | None,
         cancel_event: threading.Event | None,
     ) -> Iterator[tuple[str, object]]:
-        """流式生成 XML 并逐步解析。
+        """流式生成 XML 并逐步解析。格式错误时重试一次。"""
+        # 跟踪自闭合标签
+        _SELF_CLOSING_TAGS = {"need_more_retrieval"}
 
-        在生成过程中：
-        - 检测到中间标签关闭 (<relevance_analysis>, <draft>, <self_check>) 时 yield 进度事件
-        - 检测到 <output> 后，将其中的文本实时 yield 为 content.delta 事件
+        for attempt in range(self.MAX_RETRIES + 1):
+            buffer = ""
+            parsed_tags: set[str] = set()
+            self_check_text = ""
+            in_output = False
+            had_need_more = False
 
-        Yields:
-            (event_type, data) 元组：
-            - ("relevance_analysis", str)
-            - ("draft", str)
-            - ("self_check", str)
-            - ("content.delta", str)
-            - ("xml_error", str) — 格式最终仍有问题时
-        """
-        buffer = ""
-        parsed_tags: set[str] = set()
-        in_output = False
-        output_start = 0  # buffer 中 <output> 之后的位置
+            # 流式生成
+            for event_type, token in self._llm.generate_stream(
+                messages, cancel_event=cancel_event
+            ):
+                if cancel_event is not None and cancel_event.is_set():
+                    raise GenerationAbortedError("generation cancelled")
 
-        for event_type, token in self._llm.generate_stream(
-            messages, cancel_event=cancel_event
-        ):
-            if cancel_event is not None and cancel_event.is_set():
-                raise GenerationAbortedError("generation cancelled")
-            if event_type != "content":
-                continue
-
-            buffer += token
-
-            # 检查中间标签是否完成
-            for tag in self._INTERMEDIATE_TAGS:
-                close_marker = f"</{tag}>"
-                if close_marker in buffer and tag not in parsed_tags:
-                    content = extract_tag(buffer, tag)
-                    parsed_tags.add(tag)
-                    if content:
-                        yield (tag, content)
-
-            # 检查是否进入 <output>（仅在自检通过且无 need_more 时）
-            if not in_output:
-                open_marker = "<output>"
-                open_idx = buffer.find(open_marker)
-                if open_idx != -1:
-                    # 安全检查：<need_more_retrieval/> 不能出现在 <output> 之前
-                    need_more_idx = buffer.find("<need_more_retrieval")
-                    if need_more_idx == -1 or need_more_idx > open_idx:
-                        in_output = True
-                        output_start = open_idx + len(open_marker)
-                        after_output = buffer[output_start:]
-                        close_in_after = after_output.find("</output>")
-                        if close_in_after != -1:
-                            after_output = after_output[:close_in_after]
-                        if after_output:
-                            yield ("content.delta", after_output)
-            else:
-                # 已在 output 中，但如果期间出现了 <need_more_retrieval/> 则停止流式
-                if "<need_more_retrieval" in buffer[buffer.rfind("<output>"):]:
-                    in_output = False
+                # 转发 think token
+                if event_type == "think":
+                    yield ("think.delta", token)
                     continue
-                clean = token
-                if "</output>" in token:
-                    clean = token[: token.find("</output>")]
-                if clean:
-                    yield ("content.delta", clean)
+                if event_type != "content":
+                    continue
 
-        # 流结束后最终校验
-        missing = [t for t in required_tags if t not in parsed_tags]
-        any_missing = (
-            required_any_tag is not None
-            and not any(t in parsed_tags for t in required_any_tag)
-            and not in_output  # 如果 output 已经开始，说明有 output
-        )
-        if missing or any_missing:
-            yield (
-                "xml_error",
-                f"missing tags: {missing}"
-                + (f" (need any: {required_any_tag})" if any_missing else ""),
+                buffer += token
+
+                # 检测自闭合标签
+                for tag in _SELF_CLOSING_TAGS:
+                    if re.search(rf"<{tag}\s*/>", buffer) and tag not in parsed_tags:
+                        parsed_tags.add(tag)
+                        if tag == "need_more_retrieval":
+                            had_need_more = True
+
+                # 检查中间标签是否完成
+                for tag in self._INTERMEDIATE_TAGS:
+                    close_marker = f"</{tag}>"
+                    if close_marker in buffer and tag not in parsed_tags:
+                        content = extract_tag(buffer, tag)
+                        parsed_tags.add(tag)
+                        if tag == "self_check":
+                            self_check_text = content
+                        if content:
+                            yield (tag, content)
+
+                # 检查是否进入 <output>（需自检通过且无 need_more）
+                if not in_output:
+                    open_marker = "<output>"
+                    open_idx = buffer.find(open_marker)
+                    if open_idx != -1:
+                        # 安全检查 1: need_more_retrieval 不能在 output 之前
+                        need_more_idx = buffer.find("<need_more_retrieval")
+                        # 安全检查 2: self_check 不能包含 unsupported
+                        self_check_ok = (
+                            "unsupported" not in self_check_text.lower()
+                            or not self_check_text
+                        )
+                        if (need_more_idx == -1 or need_more_idx > open_idx) and self_check_ok:
+                            in_output = True
+                            after_output = buffer[open_idx + len(open_marker):]
+                            close_in_after = after_output.find("</output>")
+                            if close_in_after != -1:
+                                after_output = after_output[:close_in_after]
+                            if after_output:
+                                yield ("content.delta", after_output)
+                else:
+                    # 运行时检查：output 中出现 need_more 则停止
+                    if "<need_more_retrieval" in buffer[buffer.rfind("<output>"):]:
+                        in_output = False
+                        continue
+                    clean = token
+                    if "</output>" in token:
+                        clean = token[: token.find("</output>")]
+                    if clean:
+                        yield ("content.delta", clean)
+
+            # 流结束后校验
+            missing = [t for t in required_tags if t not in parsed_tags]
+            any_missing = (
+                required_any_tag is not None
+                and not any(t in parsed_tags for t in required_any_tag)
+                and not in_output
             )
+            if not missing and not any_missing:
+                return  # 成功
 
-        return buffer  # sentinel value indicating completion (returned via StopIteration)
+            if attempt >= self.MAX_RETRIES:
+                yield (
+                    "xml_error",
+                    f"missing tags after retry: {missing}"
+                    + (f" (need any: {required_any_tag})" if any_missing else ""),
+                )
+                return
+
+            # 重试：追加纠正提示
+            correction = "\n\n【格式错误】你的上一次输出缺少以下必需的 XML 标签：\n"
+            for tag in missing:
+                correction += f"  - <{tag}>...</{tag}>\n"
+            if any_missing:
+                correction += (
+                    f"  并且必须包含以下标签之一：{' / '.join(required_any_tag)}\n"
+                )
+            correction += "\n请严格按照要求的 XML 格式重新输出完整内容。"
+            messages.append({"role": "user", "content": correction})
 
     # ------------------------------------------------------------------
     # 内部：积攒流式 token 为完整文本
@@ -383,9 +407,11 @@ class SinglePassController:
         ]
 
     def parse_router_output(self, text: str) -> RouterResult:
-        """解析路由判断的 XML 输出。"""
+        """解析路由判断的 XML 输出。缺失标签时保守默认需要检索。"""
         decision_block = extract_tag_outer(text, "retrieval_decision")
-        should_retrieve = "true" in extract_tag(decision_block, "should_retrieve").lower()
+        tag_content = extract_tag(decision_block, "should_retrieve").lower()
+        # 明确 false 才不检索；缺失或解析失败默认 true（保守策略）
+        should_retrieve = tag_content not in ("false", "f", "no", "0")
         reason = extract_tag(decision_block, "reason")
         output = extract_tag(text, "output")
         return RouterResult(

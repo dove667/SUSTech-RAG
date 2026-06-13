@@ -28,7 +28,9 @@ _SIMPLE_RAG_SYSTEM_PROMPT = (
 _SELF_RAG_RETRIEVAL_SYSTEM_PROMPT = (
     "你是南方科技大学的校园知识库问答助手。"
     "当前问题已经过路由判断，需要依据提供的检索上下文回答。"
-    "请仅根据检索上下文与对话历史作答；如果证据不足或信息缺失，请明确说明，不要编造。"
+    "请严格只根据检索上下文与对话历史作答。"
+    "如果检索上下文中没有明确给出某个具体事实（如数字、名称、日期、流程步骤），"
+    "你必须告知用户该信息在当前知识库中未找到，禁止根据常识或推断补充任何具体信息。"
     "回答请使用中文，尽量简洁、准确，并尽量引用信息来源标题。"
 )
 
@@ -37,6 +39,14 @@ _SELF_RAG_OUT_OF_SCOPE_SYSTEM_PROMPT = (
     "当前请求已经被判定为超出服务范围。"
     "请用 1 到 2 句中文礼貌拒绝，不要回答原问题本身。"
     "同时引导用户提出与南方科技大学校园信息、机构、课程、招生、科研、办事流程或公开通知相关的问题。"
+)
+
+_SELF_RAG_INSUFFICIENT_EVIDENCE_SYSTEM_PROMPT = (
+    "你是南方科技大学的校园知识库问答助手。"
+    "经过多轮检索，知识库中没有找到能够可靠支撑回答该问题的证据。"
+    "你必须如实告知用户：当前知识库中没有足够的资料来回答这个问题。"
+    "禁止根据常识、推断或外部知识作答，禁止给出任何具体数字、事实或结论。"
+    "回答请使用中文，1 到 2 句话，简洁说明证据不足，并建议用户通过官方渠道（如南科大官网）查询。"
 )
 
 class GenerationCancelledError(RuntimeError):
@@ -271,10 +281,20 @@ class RagService:
                     debug_events=debug_events,
                 )
 
+        last_support_failed = (
+            debug_events
+            and debug_events[-1].event == "support.decision"
+            and not debug_events[-1].payload.get("supported", True)
+        )
+        fallback_prompt = (
+            _SELF_RAG_INSUFFICIENT_EVIDENCE_SYSTEM_PROMPT
+            if (not accumulated or last_support_failed)
+            else _SELF_RAG_RETRIEVAL_SYSTEM_PROMPT
+        )
         return AnswerPlan(
             chunks=accumulated,
             requires_retrieval=True,
-            system_prompt=_SELF_RAG_RETRIEVAL_SYSTEM_PROMPT,
+            system_prompt=fallback_prompt,
             debug_events=debug_events,
         )
 

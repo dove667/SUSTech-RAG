@@ -29,7 +29,7 @@ embedding:
   batch_size: 16
 
 retrieval:
-  mode: "self_rag"
+  mode: "single_pass"
   similarity_top_k: 8
   sparse_top_k: 8
   sparse_enabled: true

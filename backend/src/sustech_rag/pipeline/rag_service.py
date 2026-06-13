@@ -14,6 +14,11 @@ from sustech_rag.pipeline.schemas import (
     SupportDecision,
 )
 from sustech_rag.pipeline.self_rag import SelfRAGController
+from sustech_rag.pipeline.single_pass import (
+    SinglePassController,
+    RetrievalResult,
+    RouterResult,
+)
 from sustech_rag.retrieval.engine import RetrievalEngine
 from sustech_rag.retrieval.reranker import RetrievedChunk
 
@@ -65,6 +70,7 @@ class RagService:
         self._request_slots = max(1, config.llm.max_concurrent_requests)
         self._request_semaphore = threading.BoundedSemaphore(self._request_slots)
         self._self_rag = SelfRAGController(self.llm, config.retrieval.max_rounds)
+        self._single_pass = SinglePassController(self.llm, config.retrieval.max_rounds)
 
     def _build_chat_messages(
         self,
@@ -118,6 +124,11 @@ class RagService:
             history = [m for m in messages if m.get("content", "").strip()]
             if history and history[-1].get("content", "").strip() == query:
                 history = history[:-1]
+
+            # 根据模式选择流水线
+            if self.config.retrieval.mode == "single_pass":
+                yield from self._answer_stream_single_pass(query, history, cancel_event)
+                return
 
             plan = yield from self._plan_answer_stream(
                 query,
@@ -395,3 +406,175 @@ class RagService:
             yield
         finally:
             self._request_semaphore.release()
+
+    # ------------------------------------------------------------------
+    # Single-Pass RAG: 单次生成完成路由→检索分析→草稿→自检→输出
+    # ------------------------------------------------------------------
+
+    def _answer_stream_single_pass(
+        self,
+        query: str,
+        history: list[dict],
+        cancel_event: threading.Event | None = None,
+    ) -> Iterator[tuple[str, object]]:
+        """单次生成流水线：路由→检索→分析→输出。"""
+
+        # ---- Step 1: 路由判断 ----
+        router_msgs = self._single_pass.build_router_messages(query, history)
+        router_text = self.llm.generate(router_msgs)
+        if cancel_event is not None and cancel_event.is_set():
+            raise GenerationCancelledError("generation cancelled")
+        router = self._single_pass.parse_router_output(router_text)
+
+        # 发送路由决策事件
+        yield (
+            "retrieval.decision",
+            {
+                "mode": "single_pass",
+                "should_retrieve": router.should_retrieve,
+                "thought": router.reason or (
+                    "需要检索资料。" if router.should_retrieve
+                    else "无需检索，直接回答。"
+                ),
+            },
+        )
+
+        # 无需检索 → 直接流式输出回答
+        if not router.should_retrieve:
+            if router.output:
+                yield ("content.delta", router.output)
+            else:
+                yield (
+                    "content.delta",
+                    "您的问题不在南科大知识库范围内，请提问与南方科技大学相关的问题。",
+                )
+            yield ("done", {"finish_reason": "stop", "usage": {}})
+            return
+
+        # ---- Step 2-4: 检索 + 分析 + 自检 + 输出 ----
+        all_chunks: list[RetrievedChunk] = []
+        seen_texts: set[str] = set()
+        final_output = ""
+
+        for round_idx in range(1, self._single_pass.max_rounds + 1):
+            if cancel_event is not None and cancel_event.is_set():
+                raise GenerationCancelledError("generation cancelled")
+
+            # 发送检索中状态
+            yield (
+                "retrieval.assessment",
+                {
+                    "round": round_idx,
+                    "thought": f"第 {round_idx} 轮检索中，正在搜索相关文档...",
+                    "items": [],
+                },
+            )
+
+            # 检索
+            candidates = self.retrieval.retrieve(query, exclude_texts=seen_texts)
+            if not candidates:
+                yield (
+                    "support.decision",
+                    {
+                        "round": round_idx,
+                        "supported": False,
+                        "thought": "没有找到更多相关文档。",
+                    },
+                )
+                break
+
+            seen_texts.update(chunk.text for chunk in candidates)
+
+            # 发送引用
+            yield ("reference", candidates)
+
+            # 构建 prompt 并生成
+            retrieval_msgs = self._single_pass.build_retrieval_messages(
+                query, candidates, history
+            )
+            retrieval_text = self.llm.generate(retrieval_msgs)
+            if cancel_event is not None and cancel_event.is_set():
+                raise GenerationCancelledError("generation cancelled")
+
+            result = self._single_pass.parse_retrieval_output(retrieval_text)
+
+            # 发送分析进度
+            if result.relevance_analysis:
+                yield (
+                    "retrieval.assessment",
+                    {
+                        "round": round_idx,
+                        "thought": result.relevance_analysis[:300],
+                        "items": [],
+                    },
+                )
+            if result.draft:
+                yield (
+                    "retrieval.assessment",
+                    {
+                        "round": round_idx,
+                        "thought": f"草稿：\n{result.draft[:300]}",
+                        "items": [],
+                    },
+                )
+            if result.self_check:
+                yield (
+                    "support.decision",
+                    {
+                        "round": round_idx,
+                        "supported": result.is_supported,
+                        "thought": result.self_check[:300],
+                    },
+                )
+
+            # 累积相关文档
+            for chunk in candidates:
+                if chunk.text not in {c.text for c in all_chunks}:
+                    all_chunks.append(chunk)
+
+            # 判断是否完成
+            if result.output:
+                final_output = result.output
+                break
+
+            if not result.need_more:
+                # 没输出也没请求更多 → 最后一轮无结果
+                break
+
+        # 流式输出最终回答
+        if final_output:
+            yield ("content.delta", final_output)
+        elif all_chunks:
+            # 有检索结果但没有 output → 用传统方式流式生成
+            chat_msgs = self._build_chat_messages(
+                query,
+                all_chunks,
+                history,
+                _SELF_RAG_RETRIEVAL_SYSTEM_PROMPT,
+            )
+            think_open = False
+            for event_type, text in self.llm.generate_stream(
+                chat_msgs,
+                cancel_event=cancel_event,
+            ):
+                if cancel_event is not None and cancel_event.is_set():
+                    raise GenerationCancelledError("generation cancelled")
+                if event_type == "think":
+                    if not think_open:
+                        think_open = True
+                    yield ("think.delta", text)
+                elif event_type == "content":
+                    if think_open:
+                        yield ("think.end", None)
+                        think_open = False
+                    yield ("content.delta", text)
+            if think_open:
+                yield ("think.end", None)
+        else:
+            yield (
+                "content.delta",
+                "抱歉，当前知识库中没有足够的信息来回答这个问题。"
+                "建议通过南科大官网查询更多信息。",
+            )
+
+        yield ("done", {"finish_reason": "stop", "usage": {}})

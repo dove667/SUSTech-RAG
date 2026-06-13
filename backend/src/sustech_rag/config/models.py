@@ -37,7 +37,7 @@ class EmbeddingConfig(BaseModel):
 
 
 class RetrievalConfig(BaseModel):
-    mode: Literal["simple", "self_rag"] = "simple"
+    mode: Literal["simple", "self_rag", "single_pass"] = "single_pass"
     similarity_top_k: int = 8
     sparse_top_k: int = 8
     sparse_enabled: bool = True

@@ -33,15 +33,11 @@ class LlamaCppClient(OpenAICompatibleClientBase):
             presence_penalty=llm.presence_penalty,
             structured_output_mode=llm.structured_output_mode,
         )
-        self._reasoning = llm.reasoning
+        self._enable_thinking = llm.enable_thinking
 
     def _extra_payload(self) -> dict[str, object]:
-        # Qwen3 thinking is controlled per-request via chat_template_kwargs.
-        # When reasoning is off, explicitly disable it so the model doesn't
-        # produce <think> blocks regardless of its default behavior.
-        if self._reasoning in ("off", "none", ""):
-            return {"chat_template_kwargs": {"enable_thinking": False}}
-        return {}
+        # Qwen3 and similar models gate thinking via chat_template_kwargs per request.
+        return {"chat_template_kwargs": {"enable_thinking": self._enable_thinking}}
 
     def _request_label(self) -> str:
         return "llama-server"
@@ -67,7 +63,7 @@ class LlamaCppLauncher:
         self._gpu_layers = local.gpu_layers
         self._threads = local.threads
         self._threads_batch = local.threads_batch
-        self._reasoning = local.reasoning
+        self._reasoning_parser = local.reasoning_parser
         self._n_ctx = local.n_ctx
         self._flash_attn = local.flash_attn
         self._ubatch_size = local.ubatch_size
@@ -166,9 +162,8 @@ class LlamaCppLauncher:
             args.extend(["-t", str(self._threads)])
         if self._threads_batch is not None:
             args.extend(["-tb", str(self._threads_batch)])
-        if self._reasoning and self._reasoning not in ("off", "none", ""):
-            args.extend(["--reasoning", self._reasoning])
-        # ----- new: memory / perf flags -----
+        if self._reasoning_parser:
+            args.extend(["--reasoning-parser", self._reasoning_parser])
         args.extend(["--flash-attn", self._flash_attn])
         if self._ubatch_size > 0:
             args.extend(["--ubatch-size", str(self._ubatch_size)])

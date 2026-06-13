@@ -71,7 +71,8 @@ class LlamaCppConfig(LLMSharedConfig):
     gpu_layers: int | None = None  # None = 不传 -ngl，由 llama-server 决定
     threads: int | None = None     # None = 不传 -t，用 llama-server 默认 (-1 = auto)
     threads_batch: int | None = None  # None = 不传 -tb
-    reasoning: str = "off"
+    enable_thinking: bool = False
+    reasoning_parser: str = ""     # 空字符串 = 不启用；"qwen3" / "deepseek-r1" 等 = 启用对应 parser
     n_ctx: int = 8192
     # ----- sampling params -----
     top_p: float = 0.95

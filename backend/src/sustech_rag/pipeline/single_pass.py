@@ -302,22 +302,27 @@ class SinglePassController:
                     if content:
                         yield (tag, content)
 
-            # 检查是否进入 <output>
+            # 检查是否进入 <output>（仅在自检通过且无 need_more 时）
             if not in_output:
                 open_marker = "<output>"
                 open_idx = buffer.find(open_marker)
                 if open_idx != -1:
-                    in_output = True
-                    output_start = open_idx + len(open_marker)
-                    # 转发 output 之后的内容（去除末尾可能的 </output>）
-                    after_output = buffer[output_start:]
-                    close_in_after = after_output.find("</output>")
-                    if close_in_after != -1:
-                        after_output = after_output[:close_in_after]
-                    if after_output:
-                        yield ("content.delta", after_output)
+                    # 安全检查：<need_more_retrieval/> 不能出现在 <output> 之前
+                    need_more_idx = buffer.find("<need_more_retrieval")
+                    if need_more_idx == -1 or need_more_idx > open_idx:
+                        in_output = True
+                        output_start = open_idx + len(open_marker)
+                        after_output = buffer[output_start:]
+                        close_in_after = after_output.find("</output>")
+                        if close_in_after != -1:
+                            after_output = after_output[:close_in_after]
+                        if after_output:
+                            yield ("content.delta", after_output)
             else:
-                # 已在 output 中，转发新 token（去除可能的 </output>）
+                # 已在 output 中，但如果期间出现了 <need_more_retrieval/> 则停止流式
+                if "<need_more_retrieval" in buffer[buffer.rfind("<output>"):]:
+                    in_output = False
+                    continue
                 clean = token
                 if "</output>" in token:
                     clean = token[: token.find("</output>")]

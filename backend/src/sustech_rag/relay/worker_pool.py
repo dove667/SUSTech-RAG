@@ -76,12 +76,17 @@ class WorkerPool:
     # ------------------------------------------------------------------
 
     def get_available_worker(self) -> WorkerInfo | None:
-        """返回第一个空闲 Worker（轮询），没有则返回 None。"""
+        """返回最优先的空闲 Worker（按生成速度降序），没有则返回 None。"""
         with self._lock:
-            for worker in self._workers.values():
-                if not worker.is_busy:
-                    return worker
-            return None
+            idle = [w for w in self._workers.values() if not w.is_busy]
+            if not idle:
+                return None
+            # 按 tokens_per_second 降序（快的优先），无数据排最后
+            idle.sort(
+                key=lambda w: w.capabilities.get("tokens_per_second", 0),
+                reverse=True,
+            )
+            return idle[0]
 
     def get_worker(self, worker_id: str) -> WorkerInfo | None:
         """获取指定 Worker。"""

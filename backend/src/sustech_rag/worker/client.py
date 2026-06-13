@@ -29,8 +29,11 @@ class WorkerClient:
     """Worker WebSocket 客户端。
 
     连接 Relay，发送注册消息，接收任务并调用 TaskHandler 执行。
-    支持自动重连（指数退避）和信号处理。
+    支持自动重连（固定 30s）和信号处理。
+    按生成速度自动排序优先级（快的优先分配任务）。
     """
+
+    RECONNECT_DELAY = 30.0  # 断线后固定 30s 重连
 
     def __init__(
         self,
@@ -46,6 +49,10 @@ class WorkerClient:
         self._ws: ClientConnection | None = None
         self._capabilities: dict[str, Any] = {}
         self._active_tasks: dict[str, asyncio.Task] = {}
+
+        # 生成速度跟踪（用于 relay 优先级排序）
+        self._total_tokens: int = 0
+        self._total_gen_time: float = 0.0
 
         # 收集 Worker 能力信息
         self._collect_capabilities()
@@ -89,6 +96,7 @@ class WorkerClient:
                 pass
 
         self._capabilities = caps
+        self._capabilities.setdefault("tokens_per_second", 0.0)
         print(f"[worker] capabilities: {caps}", flush=True)
 
     # ------------------------------------------------------------------
@@ -96,7 +104,7 @@ class WorkerClient:
     # ------------------------------------------------------------------
 
     async def connect(self) -> bool:
-        """建立 WebSocket 连接并发送注册消息。"""
+        """建立 WebSocket 连接并发送注册消息（含当前生成速度）。"""
         try:
             print(f"[worker] connecting to {self.relay_url}...", flush=True)
             self._ws = await websockets.connect(
@@ -107,6 +115,9 @@ class WorkerClient:
             )
             print("[worker] connected", flush=True)
 
+            # 更新生成速度到 capabilities
+            self._capabilities["tokens_per_second"] = round(self._avg_tokens_per_sec(), 1)
+
             # 发送注册消息
             register_msg = build_register_msg(self.worker_id, self._capabilities)
             await self._ws.send(json.dumps(register_msg, ensure_ascii=False))
@@ -116,29 +127,28 @@ class WorkerClient:
             traceback.print_exc()
             return False
 
+    def _avg_tokens_per_sec(self) -> float:
+        """平均生成速度（tokens/秒）。"""
+        if self._total_gen_time > 0:
+            return self._total_tokens / self._total_gen_time
+        return 0.0
+
     async def run(self) -> None:
-        """主循环：连接 → 处理消息 → 断线重连。"""
+        """主循环：连接 → 处理消息 → 断线 30s 后重连。"""
         # 初始化 TaskHandler（只初始化一次）
         print("[worker] initializing TaskHandler...", flush=True)
         self._handler = TaskHandler(self.config_path)
         print("[worker] TaskHandler ready", flush=True)
 
-        retry_delay = 1.0
-        max_delay = 60.0
-
         while self._running:
             connected = await self.connect()
             if not connected:
                 print(
-                    f"[worker] connection failed, retrying in {retry_delay:.1f}s...",
+                    f"[worker] connection failed, retrying in {self.RECONNECT_DELAY:.0f}s...",
                     flush=True,
                 )
-                await self._sleep_with_cancel(retry_delay)
-                retry_delay = min(retry_delay * 2, max_delay)
+                await self._sleep_with_cancel(self.RECONNECT_DELAY)
                 continue
-
-            # 重置退避时间
-            retry_delay = 1.0
 
             # 启动心跳任务
             heartbeat_task = asyncio.create_task(self._heartbeat_loop())
@@ -158,11 +168,10 @@ class WorkerClient:
 
             if self._running:
                 print(
-                    f"[worker] reconnecting in {retry_delay:.1f}s...",
+                    f"[worker] reconnecting in {self.RECONNECT_DELAY:.0f}s...",
                     flush=True,
                 )
-                await self._sleep_with_cancel(retry_delay)
-                retry_delay = min(retry_delay * 2, max_delay)
+                await self._sleep_with_cancel(self.RECONNECT_DELAY)
 
         print("[worker] shutting down", flush=True)
 
@@ -213,12 +222,26 @@ class WorkerClient:
                 await self._ws.send(json.dumps(build_pong_msg(), ensure_ascii=False))
 
     async def _handle_task(self, task_id: str, request: dict[str, Any]) -> None:
-        """执行单个 RAG 任务并发送事件回 Relay。"""
+        """执行单个 RAG 任务并发送事件回 Relay，同时跟踪生成速度。"""
         assert self._handler is not None
         print(f"[worker] handling task: {task_id}", flush=True)
 
+        task_tokens = 0
+        task_start = time.time()
+
         async def send_event(event_type: str, data: dict[str, Any] | None = None) -> None:
             """将事件通过 WebSocket 发送回 Relay。"""
+            nonlocal task_tokens
+            # 统计生成的 token 数
+            if event_type == "content.delta" and isinstance(data, dict):
+                text = data.get("text", "")
+                # 粗略估算 token 数（中英文混合约 2 字符/token）
+                task_tokens += max(1, len(text) // 2)
+            elif event_type == "done" and isinstance(data, dict):
+                usage = data.get("usage", {})
+                if usage.get("completion_tokens", 0) > 0:
+                    task_tokens = usage["completion_tokens"]
+
             msg = build_event_msg(task_id, event_type, data)
             if self._ws is not None:
                 try:
@@ -239,6 +262,19 @@ class WorkerClient:
                 {"finish_reason": "error", "usage": {"prompt_tokens": 0, "completion_tokens": 0}},
             )
         finally:
+            # 更新生成速度统计
+            elapsed = time.time() - task_start
+            if task_tokens > 0 and elapsed > 0:
+                self._total_tokens += task_tokens
+                self._total_gen_time += elapsed
+                tps = task_tokens / elapsed
+                new_avg = self._avg_tokens_per_sec()
+                print(
+                    f"[worker] task {task_id}: {task_tokens} tokens in {elapsed:.1f}s "
+                    f"({tps:.1f} t/s, avg {new_avg:.1f} t/s)",
+                    flush=True,
+                )
+
             # 发送任务完成确认
             done_msg = build_task_done_msg(task_id)
             if self._ws is not None:

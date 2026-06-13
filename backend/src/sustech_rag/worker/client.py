@@ -58,7 +58,7 @@ class WorkerClient:
         self._collect_capabilities()
 
     def _collect_capabilities(self) -> None:
-        """收集当前机器的能力信息。"""
+        """收集当前机器的能力信息，包含结构化模型配置。"""
         caps: dict[str, Any] = {
             "platform": platform.system().lower(),
             "hostname": platform.node(),
@@ -81,17 +81,34 @@ class WorkerClient:
         except Exception:
             caps["gpu"] = "unknown"
 
-        # LLM 后端信息 — 如果配置文件可用
+        # 结构化模型配置 — 如果配置文件可用
         if self.config_path:
             try:
                 from sustech_rag.config.loader import load_config
 
                 app_config = load_config(self.config_path)
+                emb_name = app_config.embedding.model_name
+                reranker_name = app_config.retrieval.reranker_model
+
+                caps["embedding"] = {"model": emb_name}
+                caps["reranker"] = {"model": reranker_name}
+
                 caps["llm_backend"] = app_config.llm.backend
-                if hasattr(app_config.llm, "model_path"):
-                    caps["model"] = os.path.basename(app_config.llm.model_path) or "unknown"
+                if hasattr(app_config.llm, "model_path") and app_config.llm.model_path:
+                    llm_model = os.path.basename(app_config.llm.model_path)
                 elif hasattr(app_config.llm, "served_model_name"):
-                    caps["model"] = app_config.llm.served_model_name
+                    llm_model = app_config.llm.served_model_name
+                else:
+                    llm_model = "unknown"
+                caps["llm"] = {
+                    "model": llm_model,
+                    "backend": app_config.llm.backend,
+                }
+
+                # 生成唯一模型组合标识
+                caps["model_profile"] = (
+                    f"{llm_model} | {emb_name} | {reranker_name}"
+                )
             except Exception:
                 pass
 

@@ -75,18 +75,48 @@ class WorkerPool:
     # 查询
     # ------------------------------------------------------------------
 
-    def get_available_worker(self) -> WorkerInfo | None:
-        """返回最优先的空闲 Worker（按生成速度降序），没有则返回 None。"""
+    def get_available_worker(
+        self, model_profile: str | None = None
+    ) -> WorkerInfo | None:
+        """返回最优空闲 Worker。可指定 model_profile 筛选。"""
         with self._lock:
             idle = [w for w in self._workers.values() if not w.is_busy]
             if not idle:
                 return None
-            # 按 tokens_per_second 降序（快的优先），无数据排最后
+
+            if model_profile:
+                matching = [
+                    w for w in idle
+                    if w.capabilities.get("model_profile") == model_profile
+                ]
+                if matching:
+                    idle = matching
+
             idle.sort(
                 key=lambda w: w.capabilities.get("tokens_per_second", 0),
                 reverse=True,
             )
             return idle[0]
+
+    def get_available_profiles(self) -> list[dict]:
+        """返回所有可用模型组合及其空闲 Worker 数。"""
+        with self._lock:
+            profiles: dict[str, dict] = {}
+            for w in self._workers.values():
+                profile = w.capabilities.get("model_profile", "unknown")
+                if profile not in profiles:
+                    profiles[profile] = {
+                        "model_profile": profile,
+                        "llm": w.capabilities.get("llm", {}),
+                        "embedding": w.capabilities.get("embedding", {}),
+                        "reranker": w.capabilities.get("reranker", {}),
+                        "total_workers": 0,
+                        "idle_workers": 0,
+                    }
+                profiles[profile]["total_workers"] += 1
+                if not w.is_busy:
+                    profiles[profile]["idle_workers"] += 1
+            return list(profiles.values())
 
     def get_worker(self, worker_id: str) -> WorkerInfo | None:
         """获取指定 Worker。"""

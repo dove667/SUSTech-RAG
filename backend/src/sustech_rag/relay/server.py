@@ -194,6 +194,15 @@ def create_relay_app() -> FastAPI:
         ]
 
     # ------------------------------------------------------------------
+    # HTTP API — 可用模型组合
+    # ------------------------------------------------------------------
+
+    @app.get("/api/models")
+    async def api_models() -> list[dict[str, Any]]:
+        """返回当前可用的模型组合列表（由已连接 Worker 上报聚合）。"""
+        return pool.get_available_profiles()
+
+    # ------------------------------------------------------------------
     # HTTP API — 流式问答（SSE）
     # ------------------------------------------------------------------
 
@@ -219,8 +228,9 @@ def create_relay_app() -> FastAPI:
                 media_type="application/json",
             )
 
-        # 获取空闲 Worker
-        worker = pool.get_available_worker()
+        # 获取空闲 Worker（优先匹配请求的 model_profile）
+        model_profile = body.get("model_profile") or None
+        worker = pool.get_available_worker(model_profile=model_profile)
         if worker is None:
             response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
             return Response(

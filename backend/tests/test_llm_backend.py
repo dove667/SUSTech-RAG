@@ -24,22 +24,45 @@ def _launcher_with_runtime_options(device_mode: str, gpu_layers: str = "32") -> 
     launcher._device_mode = device_mode
     launcher._device_name = ""
     launcher._gpu_layers = gpu_layers
-    launcher._threads = 0
-    launcher._threads_batch = 0
-    launcher._reasoning = "off"
+    launcher._threads = None
+    launcher._threads_batch = None
+    launcher._reasoning_parser = ""
+    launcher._flash_attn = "auto"
+    launcher._ubatch_size = 512
+    launcher._cache_type_k = "q8_0"
+    launcher._cache_type_v = "q8_0"
+    launcher._kv_offload = True
+    launcher._n_batch = 512
     return launcher
 
 
 def test_metal_mode_uses_implicit_llama_cpp_device_selection() -> None:
     launcher = _launcher_with_runtime_options("metal")
 
-    assert launcher._build_runtime_args() == ["-ngl", "32", "--reasoning", "off"]
+    assert launcher._build_runtime_args() == [
+        "-ngl", "32",
+        "--flash-attn", "auto",
+        "--ubatch-size", "512",
+        "--cache-type-k", "q8_0",
+        "--cache-type-v", "q8_0",
+        "--kv-offload",
+        "-b", "512",
+    ]
 
 
 def test_cpu_mode_disables_device_offload() -> None:
     launcher = _launcher_with_runtime_options("cpu", gpu_layers="0")
 
-    assert launcher._build_runtime_args() == ["--device", "none", "-ngl", "0", "--reasoning", "off"]
+    assert launcher._build_runtime_args() == [
+        "--device", "none",
+        "-ngl", "0",
+        "--flash-attn", "auto",
+        "--ubatch-size", "512",
+        "--cache-type-k", "q8_0",
+        "--cache-type-v", "q8_0",
+        "--kv-offload",
+        "-b", "512",
+    ]
 
 
 def test_factory_builds_vllm_runtime() -> None:

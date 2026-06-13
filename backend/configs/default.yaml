@@ -59,4 +59,19 @@ llm:
     - "<|im_end|>"
     - "<|endoftext|>"
   server_port: 8081
+  # ----- sampling params -----
+  top_p: 0.95
+  top_k: 0
+  repeat_penalty: 1.1
+  frequency_penalty: 0.0
+  presence_penalty: 0.0
+  # ----- server / memory params -----
+  flash_attn: false
+  ubatch_size: 512
+  cache_type_k: "q8_0"
+  cache_type_v: "q8_0"
+  no_kv_offload: false
+  n_batch: 512
+  # ----- structured output -----
+  structured_output_mode: "json_schema" # json_schema / gbnf_grammar / prompt_only
   extra_args: []

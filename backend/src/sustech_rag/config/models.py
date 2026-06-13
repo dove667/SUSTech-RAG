@@ -73,6 +73,22 @@ class LlamaCppConfig(LLMSharedConfig):
     threads_batch: int = 0
     reasoning: str = "off"
     n_ctx: int = 8192
+    # ----- sampling params -----
+    top_p: float = 0.95
+    top_k: int = 0
+    repeat_penalty: float = 1.1
+    frequency_penalty: float = 0.0
+    presence_penalty: float = 0.0
+    # ----- server / memory params -----
+    flash_attn: bool = False
+    ubatch_size: int = 512
+    cache_type_k: str = "q8_0"
+    cache_type_v: str = "q8_0"
+    no_kv_offload: bool = False
+    n_batch: int = 512
+    # ----- structured output -----
+    structured_output_mode: Literal["json_schema", "gbnf_grammar", "prompt_only"] = "json_schema"
+
     extra_args: list[str] = Field(default_factory=list)
 
 

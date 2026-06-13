@@ -140,6 +140,51 @@ def download_model() -> None:
     download_models()
 
 
+@app.command("relay")
+def relay(
+    host: str = typer.Option("0.0.0.0", help="Bind host."),
+    port: int = typer.Option(8080, help="Bind port."),
+) -> None:
+    """启动中继服务（部署在公有云，接收 Worker 连接并转发请求）。
+
+    中继服务不加载任何模型，仅做 WebSocket 管理和请求路由。
+    """
+    import uvicorn
+
+    from sustech_rag.relay.server import create_relay_app
+
+    app = create_relay_app()
+    uvicorn.run(app, host=host, port=port, log_level="info")
+
+
+@app.command("worker")
+def worker(
+    relay_url: str = typer.Option(
+        ...,
+        "--relay",
+        help="Relay WebSocket URL, e.g. ws://127.0.0.1:8080/ws/worker",
+    ),
+    config: str = typer.Option(None, help="Path to YAML config file."),
+    worker_id: str = typer.Option(
+        "auto",
+        help="Worker ID (auto = hostname + PID).",
+    ),
+) -> None:
+    """启动 Worker（部署在本地 GPU 机器，连接 Relay 并执行推理任务）。
+
+    Worker 会加载 RAG 模型并通过 WebSocket 从 Relay 接收任务。
+    """
+    import os
+    import platform
+
+    if worker_id == "auto":
+        worker_id = f"{platform.node()}-{os.getpid()}"
+
+    from sustech_rag.worker.client import run_worker
+
+    run_worker(relay_url, config, worker_id)
+
+
 @app.command("download-llama")
 def download_llama(
     install_dir: Annotated[

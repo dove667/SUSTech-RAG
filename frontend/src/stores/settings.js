@@ -11,11 +11,6 @@ const DEFAULTS = () => ({
 
   apiBaseUrl: '/api',
   identityId: '',
-  model: 'default',
-  temperature: 0.3,
-  topK: 5,
-  enableThink: true,
-  enableTools: true,
 
   // UI prefs
   sendWithEnter: true,

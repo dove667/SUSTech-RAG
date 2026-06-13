@@ -18,14 +18,7 @@ export function chat({ settings, messages, conversationId, signal }, handlers) {
     const body = {
       conversation_id: conversationId,
       messages,
-      model: settings.model || undefined,
       stream: true,
-      options: {
-        temperature: settings.temperature,
-        top_k: settings.topK,
-        enable_think: settings.enableThink,
-        enable_tools: settings.enableTools,
-      },
     };
 
     let res;

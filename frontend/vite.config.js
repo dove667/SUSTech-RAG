@@ -18,6 +18,10 @@ const hmr = publicHost
     }
   : undefined
 
+// 中继模式：设置 VITE_RELAY_URL 环境变量来将 /api 代理到中继服务
+// 例如: VITE_RELAY_URL=http://127.0.0.1:8080 npm run dev
+const relayTarget = process.env.VITE_RELAY_URL
+
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
@@ -30,7 +34,7 @@ export default defineConfig({
     //hmr,
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:8001',
+        target: relayTarget || 'http://127.0.0.1:8001',
         changeOrigin: true,
       },
     },

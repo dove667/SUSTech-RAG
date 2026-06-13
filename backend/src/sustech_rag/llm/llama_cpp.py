@@ -16,15 +16,22 @@ class LlamaCppClient(OpenAICompatibleClientBase):
     def __init__(self, config: AppConfig) -> None:
         if not isinstance(config.llm, LlamaCppConfig):
             raise TypeError("LlamaCppClient requires a llama_cpp configuration.")
+        llm = config.llm
         super().__init__(
             endpoint=OpenAICompatibleEndpoint(
-                model_path=config.llm.model_path,
+                model_path=llm.model_path,
                 host="127.0.0.1",
-                port=config.llm.server_port,
+                port=llm.server_port,
             ),
-            temperature=config.llm.temperature,
-            max_tokens=config.llm.max_tokens,
-            stop=config.llm.stop,
+            temperature=llm.temperature,
+            max_tokens=llm.max_tokens,
+            stop=llm.stop,
+            top_p=llm.top_p,
+            top_k=llm.top_k,
+            repeat_penalty=llm.repeat_penalty,
+            frequency_penalty=llm.frequency_penalty,
+            presence_penalty=llm.presence_penalty,
+            structured_output_mode=llm.structured_output_mode,
         )
 
     def _request_label(self) -> str:
@@ -53,6 +60,12 @@ class LlamaCppLauncher:
         self._threads_batch = local.threads_batch
         self._reasoning = local.reasoning
         self._n_ctx = local.n_ctx
+        self._flash_attn = local.flash_attn
+        self._ubatch_size = local.ubatch_size
+        self._cache_type_k = local.cache_type_k
+        self._cache_type_v = local.cache_type_v
+        self._no_kv_offload = local.no_kv_offload
+        self._n_batch = local.n_batch
         self._extra_args = local.extra_args
         self._proc: subprocess.Popen | None = None
         self._client = client
@@ -146,6 +159,19 @@ class LlamaCppLauncher:
             args.extend(["-tb", str(self._threads_batch)])
         if self._reasoning:
             args.extend(["--reasoning", self._reasoning])
+        # ----- new: memory / perf flags -----
+        if self._flash_attn:
+            args.append("--flash-attn")
+        if self._ubatch_size > 0:
+            args.extend(["--ubatch-size", str(self._ubatch_size)])
+        if self._cache_type_k:
+            args.extend(["--cache-type-k", self._cache_type_k])
+        if self._cache_type_v:
+            args.extend(["--cache-type-v", self._cache_type_v])
+        if self._no_kv_offload:
+            args.append("--no-kv-offload")
+        if self._n_batch > 0:
+            args.extend(["-b", str(self._n_batch)])
         return args
 
     _KNOWN_DEVICE_MODES = {

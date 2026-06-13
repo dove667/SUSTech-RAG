@@ -35,6 +35,47 @@ _SUPPORT_SYSTEM_PROMPT = (
     "输出必须是单个 JSON 对象，不要输出 Markdown，不要输出代码块。"
 )
 
+# ---------------------------------------------------------------------------
+# JSON schemas for structured / constrained generation
+# ---------------------------------------------------------------------------
+
+_ROUTER_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "should_retrieve": {"type": "boolean"},
+        "reason": {"type": "string"},
+    },
+    "required": ["should_retrieve"],
+}
+
+_RELEVANCE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "assessments": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "candidate_index": {"type": "integer"},
+                    "relevant": {"type": "boolean"},
+                    "reason": {"type": "string"},
+                },
+                "required": ["candidate_index", "relevant"],
+            },
+        },
+    },
+    "required": ["assessments"],
+}
+
+_SUPPORT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "supported": {"type": "boolean"},
+        "reason": {"type": "string"},
+    },
+    "required": ["supported"],
+}
+
 class SelfRAGController:
     """负责 self-RAG 的检索判定、文档过滤与答案支持性判断。"""
 
@@ -55,7 +96,7 @@ class SelfRAGController:
             f"用户问题：{query}\n\n"
             '输出 JSON，格式为 {"should_retrieve": true, "reason": "..."}。'
         )
-        data = self._generate_json(_ROUTER_SYSTEM_PROMPT, user_prompt)
+        data = self._generate_json(_ROUTER_SYSTEM_PROMPT, user_prompt, _ROUTER_SCHEMA)
         return RetrievalDecision(
             should_retrieve=self._parse_bool(data.get("should_retrieve"), default=True),
             reason=str(data.get("reason", "")),
@@ -80,7 +121,7 @@ class SelfRAGController:
             '输出 JSON，格式为 '
             '{"assessments": [{"candidate_index": 1, "relevant": true, "reason": "..."}]}。'
         )
-        data = self._generate_json(_RELEVANCE_SYSTEM_PROMPT, user_prompt)
+        data = self._generate_json(_RELEVANCE_SYSTEM_PROMPT, user_prompt, _RELEVANCE_SCHEMA)
         decisions: list[ChunkRelevanceDecision] = []
         for raw_item in data.get("assessments", []):
             if not isinstance(raw_item, dict):
@@ -130,13 +171,34 @@ class SelfRAGController:
             f"证据文档：\n{context}\n\n"
             '输出 JSON，格式为 {"supported": true, "reason": "..."}。'
         )
-        data = self._generate_json(_SUPPORT_SYSTEM_PROMPT, user_prompt)
+        data = self._generate_json(_SUPPORT_SYSTEM_PROMPT, user_prompt, _SUPPORT_SCHEMA)
         return SupportDecision(
             supported=self._parse_bool(data.get("supported"), default=False),
             reason=str(data.get("reason", "")),
         )
 
-    def _generate_json(self, system_prompt: str, user_prompt: str) -> dict[str, object]:
+    def _generate_json(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        schema: dict | None = None,
+    ) -> dict[str, object]:
+        # 优先使用结构化 / 约束生成
+        if schema is not None and hasattr(self._llm, "generate_with_schema"):
+            try:
+                result = self._llm.generate_with_schema(
+                    [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    schema,
+                )
+                if result:  # 非空 dict 视为成功
+                    return result
+            except Exception:
+                pass  # 回退到 prompt 模式
+
+        # 回退：通过 prompt 要求 JSON 输出
         text = self._llm.generate(
             [
                 {"role": "system", "content": system_prompt},

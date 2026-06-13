@@ -235,33 +235,18 @@ async function importConfig(e) {
           <label>API Base URL</label>
           <input type="text" :value="s.apiBaseUrl" @change="e => update({ apiBaseUrl: e.target.value })" placeholder="/api" />
         </div>
-        <div class="row">
-          <label>Model</label>
-          <input type="text" :value="s.model" @change="e => update({ model: e.target.value })" />
-        </div>
-        <div class="row">
-          <label>Temperature: {{ s.temperature }}</label>
-          <input type="range" min="0" max="2" step="0.05" :value="s.temperature" @input="e => update({ temperature: parseFloat(e.target.value) })" />
-        </div>
-        <div class="row">
-          <label>Top-K: {{ s.topK }}</label>
-          <input type="range" min="1" max="20" step="1" :value="s.topK" @input="e => update({ topK: parseInt(e.target.value) })" />
-        </div>
+        <p class="hint" style="margin-top:8px;line-height:1.6;">
+          💡 <strong>中继模式</strong>：将 API Base URL 设为中继服务地址（如 <code>http://127.0.0.1:8080</code>）
+          即可通过中继连接到远程 Worker。开发时也可通过环境变量启动：
+          <br /><code>VITE_RELAY_URL=http://127.0.0.1:8080 npm run dev</code>
+        </p>
+
       </section>
 
       <!-- CHAT BEHAVIOUR -->
       <section v-else-if="activeTab === 'chat'" class="panel">
         <h2>对话行为</h2>
-        <div class="row">
-          <label>启用 think 块</label>
-          <input type="checkbox" :checked="s.enableThink" @change="e => update({ enableThink: e.target.checked })" />
-        </div>
-        <div class="row">
-          <label>启用工具调用</label>
-          <input type="checkbox" :checked="s.enableTools" @change="e => update({ enableTools: e.target.checked })" />
-        </div>
-        <h3 style="margin-top: 20px;">嵌入示例</h3>
-        <pre class="snippet">{{ embedSnippet }}</pre>
+
       </section>
 
       <!-- DATA -->
@@ -291,6 +276,8 @@ async function importConfig(e) {
           <li>自动识别多种 LaTeX 定界符 (<code>$...$</code>, <code>$$...$$</code>, <code>\(...\)</code>, <code>\[...\]</code>, <code>\begin...\end</code>)</li>
         </ul>
         <p class="muted">接口规范：<a href="/API.md" target="_blank">/API.md</a></p>
+        <h3 style="margin-top: 20px;">嵌入示例</h3>
+        <pre class="snippet">{{ embedSnippet }}</pre>
       </section>
     </main>
   </div>

@@ -39,6 +39,17 @@ class LlamaCppClient(OpenAICompatibleClientBase):
         # Qwen3 and similar models gate thinking via chat_template_kwargs per request.
         return {"chat_template_kwargs": {"enable_thinking": self._enable_thinking}}
 
+    def _apply_structured_output(self, payload: dict[str, object], json_schema: dict) -> None:
+        mode = self._structured_output_mode
+        if mode == "json_schema":
+            payload["response_format"] = {
+                "type": "json_object",
+                "schema": json_schema,
+            }
+        elif mode == "gbnf_grammar":
+            payload["grammar"] = self._schema_to_gbnf(json_schema)
+        # prompt_only: 不注入任何参数
+
     def _request_label(self) -> str:
         return "llama-server"
 

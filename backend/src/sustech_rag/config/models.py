@@ -110,6 +110,7 @@ class VLLMConfig(LLMSharedConfig):
     reasoning_parser: str = ""
     api_key: str = ""
     generation_config: str = "vllm"
+    structured_output_mode: Literal["json_schema", "prompt_only"] = "json_schema"
     trust_remote_code: bool = False
     enable_prefix_caching: bool = True
     enable_chunked_prefill: bool = False

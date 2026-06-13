@@ -28,10 +28,25 @@ class VLLMClient(OpenAICompatibleClientBase):
             temperature=config.llm.temperature,
             max_tokens=config.llm.max_tokens,
             stop=config.llm.stop,
+            structured_output_mode=config.llm.structured_output_mode,
         )
 
     def _extra_payload(self) -> dict[str, object]:
         return {"model": self.endpoint.served_model_name}
+
+    def _apply_structured_output(self, payload: dict[str, object], json_schema: dict) -> None:
+        mode = self._structured_output_mode
+        if mode == "json_schema":
+            # OpenAI-compatible 标准格式，vLLM 遵循此规范
+            payload["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "response",
+                    "schema": json_schema,
+                    "strict": True,
+                },
+            }
+        # prompt_only: 不注入任何参数
 
     def _extract_think_delta(self, delta: dict[str, object]) -> str:
         return str(

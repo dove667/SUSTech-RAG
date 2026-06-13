@@ -166,17 +166,7 @@ class OpenAICompatibleClientBase(ABC):
     def generate_with_schema(self, messages: list[dict], json_schema: dict) -> dict[str, object]:
         """生成受 JSON schema 约束的输出，返回解析后的 dict；失败返回 {}。"""
         payload = self._build_payload(messages, stream=False)
-        mode = self._structured_output_mode
-        if mode == "json_schema":
-            payload["response_format"] = {
-                "type": "json_object",
-                "schema": json_schema,
-            }
-        elif mode == "gbnf_grammar":
-            payload["grammar"] = self._schema_to_gbnf(json_schema)
-        else:
-            # prompt_only: 不加 structured output 参数
-            pass
+        self._apply_structured_output(payload, json_schema)
         try:
             resp = httpx.post(
                 f"{self._endpoint.base_url}/v1/chat/completions",
@@ -193,6 +183,9 @@ class OpenAICompatibleClientBase(ABC):
             return {}
         except Exception:
             return {}
+
+    def _apply_structured_output(self, payload: dict[str, object], json_schema: dict) -> None:
+        """子类覆写以注入后端特定的 structured output 参数。"""
 
     @staticmethod
     def _schema_to_gbnf(schema: dict) -> str:

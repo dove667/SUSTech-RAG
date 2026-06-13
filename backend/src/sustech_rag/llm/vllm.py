@@ -197,6 +197,8 @@ class VLLMLauncher:
             args.append("--trust-remote-code")
         if cfg.enable_prefix_caching:
             args.append("--enable-prefix-caching")
+        if cfg.enable_chunked_prefill:
+            args.append("--enable-chunked-prefill")
         if cfg.enable_log_requests:
             args.append("--enable-log-requests")
         if cfg.disable_uvicorn_access_log:

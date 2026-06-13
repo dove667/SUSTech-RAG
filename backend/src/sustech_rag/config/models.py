@@ -113,6 +113,7 @@ class VLLMConfig(LLMSharedConfig):
     structured_output_mode: Literal["json_schema", "prompt_only"] = "json_schema"
     trust_remote_code: bool = False
     enable_prefix_caching: bool = True
+    enable_chunked_prefill: bool = False
     enable_log_requests: bool = False
     disable_uvicorn_access_log: bool = True
     max_parallel_loading_workers: int = 0

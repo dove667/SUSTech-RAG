@@ -28,16 +28,20 @@ class LlamaCppClient(OpenAICompatibleClientBase):
             stop=llm.stop,
             top_p=llm.top_p,
             top_k=llm.top_k,
-            repeat_penalty=llm.repeat_penalty,
             frequency_penalty=llm.frequency_penalty,
             presence_penalty=llm.presence_penalty,
             structured_output_mode=llm.structured_output_mode,
         )
         self._enable_thinking = llm.enable_thinking
+        self._repeat_penalty = llm.repeat_penalty
 
     def _extra_payload(self) -> dict[str, object]:
-        # Qwen3 and similar models gate thinking via chat_template_kwargs per request.
-        return {"chat_template_kwargs": {"enable_thinking": self._enable_thinking}}
+        payload: dict[str, object] = {}
+        if self._repeat_penalty != 1.0:
+            payload["repeat_penalty"] = self._repeat_penalty
+        if self._enable_thinking:
+            payload["chat_template_kwargs"] = {"enable_thinking": True}
+        return payload
 
     def _apply_structured_output(self, payload: dict[str, object], json_schema: dict) -> None:
         mode = self._structured_output_mode

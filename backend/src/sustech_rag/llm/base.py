@@ -46,7 +46,6 @@ class OpenAICompatibleClientBase(ABC):
         temperature: float,
         max_tokens: int,
         stop: list[str],
-        repeat_penalty: float,
         top_p: float = 0.95,
         top_k: int = 0,
         frequency_penalty: float = 0.0,
@@ -59,7 +58,6 @@ class OpenAICompatibleClientBase(ABC):
         self._stop = stop
         self._top_p = top_p
         self._top_k = top_k if top_k > 0 else 0
-        self._repeat_penalty = repeat_penalty
         self._frequency_penalty = frequency_penalty
         self._presence_penalty = presence_penalty
         self._structured_output_mode = structured_output_mode
@@ -142,8 +140,6 @@ class OpenAICompatibleClientBase(ABC):
             payload["top_p"] = self._top_p
         if self._top_k > 0:
             payload["top_k"] = self._top_k
-        if self._repeat_penalty != 1.0:
-            payload["repeat_penalty"] = self._repeat_penalty
         if self._frequency_penalty != 0.0:
             payload["frequency_penalty"] = self._frequency_penalty
         if self._presence_penalty != 0.0:

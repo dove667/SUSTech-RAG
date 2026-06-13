@@ -417,20 +417,19 @@ class RagService:
         history: list[dict],
         cancel_event: threading.Event | None = None,
     ) -> Iterator[tuple[str, object]]:
-        """单次生成流水线：路由→检索→分析→输出。"""
+        """单次生成流水线：路由→检索→流式解析→输出。"""
 
-        # ---- Step 1: 路由判断（含 XML 格式重试）----
+        # ---- Step 1: 路由判断（短输出，用非流式）----
         router_msgs = self._single_pass.build_router_messages(query, history)
-        router_text = self._single_pass._generate_with_xml_retry(
+        router_text = self._single_pass.generate_with_xml_retry(
             router_msgs,
             required_tags=["retrieval_decision", "should_retrieve"],
-            required_any_tag=None,
+            cancel_event=cancel_event,
         )
         if cancel_event is not None and cancel_event.is_set():
             raise GenerationCancelledError("generation cancelled")
         router = self._single_pass.parse_router_output(router_text)
 
-        # 发送路由决策事件
         yield (
             "retrieval.decision",
             {
@@ -443,7 +442,6 @@ class RagService:
             },
         )
 
-        # 无需检索 → 直接流式输出回答
         if not router.should_retrieve:
             if router.output:
                 yield ("content.delta", router.output)
@@ -455,115 +453,100 @@ class RagService:
             yield ("done", {"finish_reason": "stop", "usage": {}})
             return
 
-        # ---- Step 2-4: 检索 + 分析 + 自检 + 输出 ----
+        # ---- Step 2-4: 检索 + 流式生成 + 实时解析 ----
         all_chunks: list[RetrievedChunk] = []
         seen_texts: set[str] = set()
-        final_output = ""
 
         for round_idx in range(1, self._single_pass.max_rounds + 1):
             if cancel_event is not None and cancel_event.is_set():
                 raise GenerationCancelledError("generation cancelled")
 
-            # 发送检索中状态
             yield (
                 "retrieval.assessment",
                 {
                     "round": round_idx,
-                    "thought": f"第 {round_idx} 轮检索中，正在搜索相关文档...",
+                    "thought": f"第 {round_idx} 轮检索中...",
                     "items": [],
                 },
             )
 
-            # 检索
             candidates = self.retrieval.retrieve(query, exclude_texts=seen_texts)
             if not candidates:
                 yield (
                     "support.decision",
-                    {
-                        "round": round_idx,
-                        "supported": False,
-                        "thought": "没有找到更多相关文档。",
-                    },
+                    {"round": round_idx, "supported": False,
+                     "thought": "没有找到更多相关文档。"},
                 )
                 break
 
             seen_texts.update(chunk.text for chunk in candidates)
-
-            # 发送引用
             yield ("reference", candidates)
 
-            # 构建 prompt 并生成（含 XML 格式重试）
+            # 流式生成并逐步解析
             retrieval_msgs = self._single_pass.build_retrieval_messages(
                 query, candidates, history
             )
-            retrieval_text = self._single_pass._generate_with_xml_retry(
+            need_more = False
+            has_output = False
+
+            for event, data in self._single_pass.generate_and_stream(
                 retrieval_msgs,
                 required_tags=["relevance_analysis", "draft", "self_check"],
                 required_any_tag=["output", "need_more_retrieval"],
-            )
-            if cancel_event is not None and cancel_event.is_set():
-                raise GenerationCancelledError("generation cancelled")
+                cancel_event=cancel_event,
+            ):
+                if cancel_event is not None and cancel_event.is_set():
+                    raise GenerationCancelledError("generation cancelled")
 
-            result = self._single_pass.parse_retrieval_output(retrieval_text)
-
-            # 发送分析进度
-            if result.relevance_analysis:
-                yield (
-                    "retrieval.assessment",
-                    {
+                if event == "content.delta":
+                    # 实时转发 output 内容给用户
+                    yield ("content.delta", data)
+                    has_output = True
+                elif event == "relevance_analysis":
+                    yield ("retrieval.assessment", {
                         "round": round_idx,
-                        "thought": result.relevance_analysis[:300],
+                        "thought": data[:300],
                         "items": [],
-                    },
-                )
-            if result.draft:
-                yield (
-                    "retrieval.assessment",
-                    {
+                    })
+                elif event == "draft":
+                    yield ("retrieval.assessment", {
                         "round": round_idx,
-                        "thought": f"草稿：\n{result.draft[:300]}",
+                        "thought": f"草稿：\n{data[:300]}",
                         "items": [],
-                    },
-                )
-            if result.self_check:
-                yield (
-                    "support.decision",
-                    {
+                    })
+                elif event == "self_check":
+                    is_supported = "unsupported" not in data.lower()
+                    need_more = "unsupported" in data.lower()
+                    yield ("support.decision", {
                         "round": round_idx,
-                        "supported": result.is_supported,
-                        "thought": result.self_check[:300],
-                    },
-                )
+                        "supported": is_supported,
+                        "thought": data[:300],
+                    })
+                elif event == "xml_error":
+                    yield ("retrieval.assessment", {
+                        "round": round_idx,
+                        "thought": f"XML 格式异常: {data}",
+                        "items": [],
+                    })
 
-            # 累积相关文档
+            # 累积文档
             for chunk in candidates:
                 if chunk.text not in {c.text for c in all_chunks}:
                     all_chunks.append(chunk)
 
-            # 判断是否完成
-            if result.output:
-                final_output = result.output
+            if has_output:
+                break
+            if not need_more:
                 break
 
-            if not result.need_more:
-                # 没输出也没请求更多 → 最后一轮无结果
-                break
-
-        # 流式输出最终回答
-        if final_output:
-            yield ("content.delta", final_output)
-        elif all_chunks:
-            # 有检索结果但没有 output → 用传统方式流式生成
+        # 兜底：如果没有流式输出但已有检索结果，用传统流式生成
+        if not has_output and all_chunks:
             chat_msgs = self._build_chat_messages(
-                query,
-                all_chunks,
-                history,
-                _SELF_RAG_RETRIEVAL_SYSTEM_PROMPT,
+                query, all_chunks, history, _SELF_RAG_RETRIEVAL_SYSTEM_PROMPT,
             )
             think_open = False
             for event_type, text in self.llm.generate_stream(
-                chat_msgs,
-                cancel_event=cancel_event,
+                chat_msgs, cancel_event=cancel_event,
             ):
                 if cancel_event is not None and cancel_event.is_set():
                     raise GenerationCancelledError("generation cancelled")
@@ -578,7 +561,7 @@ class RagService:
                     yield ("content.delta", text)
             if think_open:
                 yield ("think.end", None)
-        else:
+        elif not has_output:
             yield (
                 "content.delta",
                 "抱歉，当前知识库中没有足够的信息来回答这个问题。"

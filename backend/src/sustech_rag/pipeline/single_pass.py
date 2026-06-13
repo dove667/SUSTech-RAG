@@ -51,10 +51,15 @@ from __future__ import annotations
 import re
 import threading
 from collections.abc import Iterator
+from dataclasses import dataclass, field
 from typing import Any
 
 from sustech_rag.llm.base import LLMClient
 from sustech_rag.retrieval.reranker import RetrievedChunk
+
+
+class GenerationAbortedError(RuntimeError):
+    """流式生成被取消。"""
 
 
 # ---------------------------------------------------------------------------
@@ -88,8 +93,6 @@ def extract_tag_outer(text: str, tag: str) -> str:
 # ---------------------------------------------------------------------------
 # 解析结构
 # ---------------------------------------------------------------------------
-
-from dataclasses import dataclass, field
 
 
 @dataclass
@@ -199,33 +202,30 @@ _RETRIEVAL_SYSTEM = """你是南方科技大学的校园知识库问答助手。
 class SinglePassController:
     """单次生成多任务 RAG 控制器。"""
 
-    MAX_RETRIES = 1  # 格式错误时最多重试 1 次
+    MAX_RETRIES = 1
+
+    # 中间标签出现顺序
+    _INTERMEDIATE_TAGS = ["relevance_analysis", "draft", "self_check"]
 
     def __init__(self, llm: LLMClient, max_rounds: int = 2) -> None:
         self._llm = llm
         self.max_rounds = max(1, max_rounds)
 
     # ------------------------------------------------------------------
-    # 容错生成：格式错误时追加纠正提示并重试
+    # 流式生成 XML + 格式校验 + 重试
     # ------------------------------------------------------------------
 
-    def _generate_with_xml_retry(
+    def generate_with_xml_retry(
         self,
         messages: list[dict],
         required_tags: list[str],
         required_any_tag: list[str] | None = None,
+        cancel_event: threading.Event | None = None,
     ) -> str:
-        """生成并校验 XML 格式；格式错误时追加纠正提示重试一次。
+        """流式生成 XML 文本，结束后校验格式，缺失标签时追加纠正重试。
 
-        Args:
-            messages: 初始消息列表（会被原地修改以追加纠正信息）。
-            required_tags: 必须全部出现的 XML 标签名。
-            required_any_tag: 至少出现其中之一的标签名。
-
-        Returns:
-            模型输出的原始文本。
-        """
-        text = self._llm.generate(messages)
+        返回完整的原始文本（所有流式 token 拼接）。"""
+        text = self._accumulate_stream(messages, cancel_event)
 
         for attempt in range(self.MAX_RETRIES + 1):
             missing = [t for t in required_tags if not _has_tag(text, t)]
@@ -234,13 +234,11 @@ class SinglePassController:
                 and not any(_has_tag(text, t) for t in required_any_tag)
             )
             if not missing and not any_missing:
-                return text  # 格式正确
-
-            if attempt >= self.MAX_RETRIES:
-                # 最后一次重试仍失败 → 返回原始文本（调用方做最终兜底）
                 return text
 
-            # 构造纠正提示
+            if attempt >= self.MAX_RETRIES:
+                return text
+
             correction = "\n\n【格式错误】你的上一次输出缺少以下必需的 XML 标签：\n"
             for tag in missing:
                 correction += f"  - <{tag}>...</{tag}>\n"
@@ -250,9 +248,117 @@ class SinglePassController:
                 )
             correction += "\n请严格按照要求的 XML 格式重新输出完整内容。"
             messages.append({"role": "user", "content": correction})
+            # 重试用非流式（更快）
             text = self._llm.generate(messages)
 
         return text
+
+    # ------------------------------------------------------------------
+    # 流式生成 + 逐步解析标签 + 实时转发 output
+    # ------------------------------------------------------------------
+
+    def generate_and_stream(
+        self,
+        messages: list[dict],
+        required_tags: list[str],
+        required_any_tag: list[str] | None,
+        cancel_event: threading.Event | None,
+    ) -> Iterator[tuple[str, object]]:
+        """流式生成 XML 并逐步解析。
+
+        在生成过程中：
+        - 检测到中间标签关闭 (<relevance_analysis>, <draft>, <self_check>) 时 yield 进度事件
+        - 检测到 <output> 后，将其中的文本实时 yield 为 content.delta 事件
+
+        Yields:
+            (event_type, data) 元组：
+            - ("relevance_analysis", str)
+            - ("draft", str)
+            - ("self_check", str)
+            - ("content.delta", str)
+            - ("xml_error", str) — 格式最终仍有问题时
+        """
+        buffer = ""
+        parsed_tags: set[str] = set()
+        in_output = False
+        output_start = 0  # buffer 中 <output> 之后的位置
+
+        for event_type, token in self._llm.generate_stream(
+            messages, cancel_event=cancel_event
+        ):
+            if cancel_event is not None and cancel_event.is_set():
+                raise GenerationAbortedError("generation cancelled")
+            if event_type != "content":
+                continue
+
+            buffer += token
+
+            # 检查中间标签是否完成
+            for tag in self._INTERMEDIATE_TAGS:
+                close_marker = f"</{tag}>"
+                if close_marker in buffer and tag not in parsed_tags:
+                    content = extract_tag(buffer, tag)
+                    parsed_tags.add(tag)
+                    if content:
+                        yield (tag, content)
+
+            # 检查是否进入 <output>
+            if not in_output:
+                open_marker = "<output>"
+                open_idx = buffer.find(open_marker)
+                if open_idx != -1:
+                    in_output = True
+                    output_start = open_idx + len(open_marker)
+                    # 转发 output 之后的内容（去除末尾可能的 </output>）
+                    after_output = buffer[output_start:]
+                    close_in_after = after_output.find("</output>")
+                    if close_in_after != -1:
+                        after_output = after_output[:close_in_after]
+                    if after_output:
+                        yield ("content.delta", after_output)
+            else:
+                # 已在 output 中，转发新 token（去除可能的 </output>）
+                clean = token
+                if "</output>" in token:
+                    clean = token[: token.find("</output>")]
+                if clean:
+                    yield ("content.delta", clean)
+
+        # 流结束后最终校验
+        missing = [t for t in required_tags if t not in parsed_tags]
+        any_missing = (
+            required_any_tag is not None
+            and not any(t in parsed_tags for t in required_any_tag)
+            and not in_output  # 如果 output 已经开始，说明有 output
+        )
+        if missing or any_missing:
+            yield (
+                "xml_error",
+                f"missing tags: {missing}"
+                + (f" (need any: {required_any_tag})" if any_missing else ""),
+            )
+
+        return buffer  # sentinel value indicating completion (returned via StopIteration)
+
+    # ------------------------------------------------------------------
+    # 内部：积攒流式 token 为完整文本
+    # ------------------------------------------------------------------
+
+    def _accumulate_stream(
+        self,
+        messages: list[dict],
+        cancel_event: threading.Event | None,
+    ) -> str:
+        """将流式 token 拼成完整字符串。"""
+        parts: list[str] = []
+        for event_type, token in self._llm.generate_stream(
+            messages, cancel_event=cancel_event
+        ):
+            if cancel_event is not None and cancel_event.is_set():
+                raise GenerationAbortedError("generation cancelled")
+            if event_type == "content":
+                parts.append(token)
+        return "".join(parts)
 
     # ------------------------------------------------------------------
     # Step 1: 路由 + 可选直接回答

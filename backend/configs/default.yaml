@@ -47,9 +47,9 @@ llm:
   model_path: "data/models/llm/qwen/Qwen3-8B-Q4_K_M.gguf"
   device_mode: "auto"
   device_name: ""
-  gpu_layers: "32" # 加载模型时放在 GPU 上的层数，Qwen3-8B 有 32 层
-  threads: 0 # 自动（通常 CPU 核心数）
-  threads_batch: 2 # 批处理线程数
+  gpu_layers: 32 # 加载模型时放在 GPU 上的层数；None = 不传 -ngl
+  threads: null # None = 不传 -t，用 llama-server 默认 (-1=auto)
+  threads_batch: 2 # 批处理线程数；None = 不传 -tb
   reasoning: "off"
   n_ctx: 8192
   temperature: 0.2
@@ -66,11 +66,11 @@ llm:
   frequency_penalty: 0.0
   presence_penalty: 0.0
   # ----- server / memory params -----
-  flash_attn: false
+  flash_attn: "auto" # on / off / auto；"auto" 让 llama-server 自动判断
   ubatch_size: 512
   cache_type_k: "q8_0"
   cache_type_v: "q8_0"
-  no_kv_offload: false
+  kv_offload: true # true = 将 KV cache 卸载到 GPU；false = 留在 CPU
   n_batch: 512
   # ----- structured output -----
   structured_output_mode: "json_schema" # json_schema / gbnf_grammar / prompt_only

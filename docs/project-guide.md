@@ -11,20 +11,6 @@
 5. [../src/sustech_rag/api/app.py](../src/sustech_rag/api/app.py)
 6. [../src/sustech_rag/api/routes.py](../src/sustech_rag/api/routes.py)
 
-## CLI 命令
-
-```bash
-uv run sustech-rag crawl
-uv run sustech-rag preprocess
-uv run sustech-rag index
-uv run sustech-rag query "问题"
-uv run sustech-rag serve --host 127.0.0.1 --port 8000
-uv run sustech-rag paths
-```
-
-`preprocess` 会同时执行清洗和分块；`index` 读取 `data/interim/chunks.jsonl`。
-`query` 是端到端冒烟测试入口，会临时启动并关闭 `llama-server`。长时间交互使用 `serve`。
-
 ## 核心数据结构
 
 - `RawDocument`：抓取后的一篇原始文档，包含 URL、标题、正文、content type、source path 和 metadata。

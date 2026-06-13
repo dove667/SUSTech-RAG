@@ -86,7 +86,24 @@ curl http://127.0.0.1:8000/api/health
 如果要在 Linux 服务器上使用 `vLLM` 多卡部署，并让 backend 去拉起另一个虚拟环境中的
 `vllm`，可以直接参考 [vLLM Linux 部署](vllm-linux-deploy.md)。
 
-## 6. 与前端联调
+## 6. 分布式部署（Relay-Worker）
+
+公有云部署 Relay（无模型，仅路由）：
+
+```bash
+uv run sustech-rag relay --host 0.0.0.0 --port 8080
+```
+
+GPU 机器连接 Relay：
+
+```bash
+uv run sustech-rag worker --relay ws://<relay-host>:8080/ws/worker
+```
+
+Relay 默认托管 `frontend/dist` 静态文件，提供 API + 前端 + Worker WebSocket 统一入口。
+单机调试时也可以先启动 Relay，再用 Worker 连回 `ws://127.0.0.1:8080/ws/worker`。
+
+## 7. 与前端联调
 
 ```bash
 cd ../frontend
@@ -96,7 +113,7 @@ npm run dev
 
 前端默认把 `/api` 代理到 `127.0.0.1:8000`。
 
-## 7. 测试
+## 8. 测试
 
 ```bash
 uv run pytest
@@ -105,7 +122,7 @@ uv run ruff check .
 
 索引测试依赖本地 embedding 模型；模型不存在时会跳过。Chroma 0.5.x 会按 path 缓存客户端实例，测试或脚本中混用不同 `Settings` 可能触发 settings 不一致异常。
 
-## 8. 常见故障
+## 9. 常见故障
 
 `llama-server binary not found`：安装 llama.cpp，并让 `llama-server` 出现在 PATH。
 

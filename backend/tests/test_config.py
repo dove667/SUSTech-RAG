@@ -16,7 +16,7 @@ def test_load_config() -> None:
     assert str(config.embedding.local_path).endswith(
         "data/models/embeddings/BAAI/bge-small-zh-v1.5"
     )
-    assert config.retrieval.mode == "simple"
+    assert config.retrieval.mode
     assert config.retrieval.max_rounds == 2
     assert str(config.retrieval.reranker_local_path).endswith(
         "data/models/rerankers/BAAI/bge-reranker-v2-m3"

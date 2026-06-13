@@ -68,9 +68,9 @@ class LlamaCppConfig(LLMSharedConfig):
     model_path: str = ""
     device_mode: str = "cpu"
     device_name: str = ""
-    gpu_layers: str = "0"
-    threads: int = 0
-    threads_batch: int = 0
+    gpu_layers: int | None = None  # None = 不传 -ngl，由 llama-server 决定
+    threads: int | None = None     # None = 不传 -t，用 llama-server 默认 (-1 = auto)
+    threads_batch: int | None = None  # None = 不传 -tb
     reasoning: str = "off"
     n_ctx: int = 8192
     # ----- sampling params -----
@@ -80,11 +80,11 @@ class LlamaCppConfig(LLMSharedConfig):
     frequency_penalty: float = 0.0
     presence_penalty: float = 0.0
     # ----- server / memory params -----
-    flash_attn: bool = False
+    flash_attn: str = "auto"  # "on" / "off" / "auto"; 始终显式传给 --flash-attn
     ubatch_size: int = 512
-    cache_type_k: str = "q8_0"
-    cache_type_v: str = "q8_0"
-    no_kv_offload: bool = False
+    cache_type_k: str | None = "q8_0"  # None = 不传，用 llama-server 默认 (f16)
+    cache_type_v: str | None = "q8_0"  # None = 不传，用 llama-server 默认 (f16)
+    kv_offload: bool = True  # True = --kv-offload, False = --no-kv-offload
     n_batch: int = 512
     # ----- structured output -----
     structured_output_mode: Literal["json_schema", "gbnf_grammar", "prompt_only"] = "json_schema"

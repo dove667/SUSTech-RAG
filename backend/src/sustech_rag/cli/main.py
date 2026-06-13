@@ -101,7 +101,7 @@ def query(
 @app.command()
 def serve(
     host: str = typer.Option("0.0.0.0", help="Bind host."),
-    port: int = typer.Option(8001, help="Bind port."),
+    port: int = typer.Option(8000, help="Bind port."),
     config: str = typer.Option(None, help="Path to YAML config file."),
 ) -> None:
     """

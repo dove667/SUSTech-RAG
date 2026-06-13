@@ -4,6 +4,8 @@
 
 ## 数据流
 
+### 单体模式
+
 ```text
 SiteCrawler
   -> RawDocument
@@ -17,6 +19,21 @@ SiteCrawler
   -> FastAPI SSE
 ```
 
+### 分布式模式（Relay-Worker）
+
+```text
+客户端
+  -> Relay (SSE)         # 公有云，无模型，仅路由
+  -> WebSocket bridge    # Relay ↔ Worker 的 WS 信道
+  -> Worker              # GPU 机器，加载全部模型
+     -> RagService
+     -> RetrievalEngine + Reranker
+     -> LlamaCppBackend
+  -> WS event 回传
+  -> Relay SSE 转发
+  -> 客户端
+```
+
 ## 模块职责
 
 - `config/`：Pydantic 配置模型和 YAML 加载，相对路径解析为绝对路径。
@@ -27,6 +44,8 @@ SiteCrawler
 - `llm/`：管理持久化 `llama-server` 子进程，并调用 completions/chat-completions。
 - `pipeline/`：面向 CLI/API 的编排层。
 - `api/`：FastAPI app、路由、schema 和 SSE 帧。
+- `relay/`：无模型 FastAPI 中继服务（公有云），管理 Worker WebSocket 连接池和 SSE↔WS 桥接。
+- `worker/`：WS 客户端（GPU 机器），连接 Relay 接收任务，封装 `RagService` 执行推理。
 - `utils/`：I/O、平台差异、Chroma client、模型缓存和依赖确保。
 
 ## API 生命周期

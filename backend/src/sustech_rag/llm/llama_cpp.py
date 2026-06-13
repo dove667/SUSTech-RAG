@@ -33,6 +33,15 @@ class LlamaCppClient(OpenAICompatibleClientBase):
             presence_penalty=llm.presence_penalty,
             structured_output_mode=llm.structured_output_mode,
         )
+        self._reasoning = llm.reasoning
+
+    def _extra_payload(self) -> dict[str, object]:
+        # Qwen3 thinking is controlled per-request via chat_template_kwargs.
+        # When reasoning is off, explicitly disable it so the model doesn't
+        # produce <think> blocks regardless of its default behavior.
+        if self._reasoning in ("off", "none", ""):
+            return {"chat_template_kwargs": {"enable_thinking": False}}
+        return {}
 
     def _request_label(self) -> str:
         return "llama-server"
@@ -64,7 +73,7 @@ class LlamaCppLauncher:
         self._ubatch_size = local.ubatch_size
         self._cache_type_k = local.cache_type_k
         self._cache_type_v = local.cache_type_v
-        self._no_kv_offload = local.no_kv_offload
+        self._kv_offload = local.kv_offload
         self._n_batch = local.n_batch
         self._extra_args = local.extra_args
         self._proc: subprocess.Popen | None = None
@@ -151,24 +160,25 @@ class LlamaCppLauncher:
         device_arg = self._resolve_device_arg()
         if device_arg is not None:
             args.extend(["--device", device_arg])
-        if self._gpu_layers:
+        if self._gpu_layers is not None:
             args.extend(["-ngl", str(self._gpu_layers)])
-        if self._threads > 0:
+        if self._threads is not None:
             args.extend(["-t", str(self._threads)])
-        if self._threads_batch > 0:
+        if self._threads_batch is not None:
             args.extend(["-tb", str(self._threads_batch)])
         if self._reasoning and self._reasoning not in ("off", "none", ""):
             args.extend(["--reasoning", self._reasoning])
         # ----- new: memory / perf flags -----
-        if self._flash_attn:
-            args.append("--flash-attn")
+        args.extend(["--flash-attn", self._flash_attn])
         if self._ubatch_size > 0:
             args.extend(["--ubatch-size", str(self._ubatch_size)])
-        if self._cache_type_k:
+        if self._cache_type_k is not None:
             args.extend(["--cache-type-k", self._cache_type_k])
-        if self._cache_type_v:
+        if self._cache_type_v is not None:
             args.extend(["--cache-type-v", self._cache_type_v])
-        if self._no_kv_offload:
+        if self._kv_offload:
+            args.append("--kv-offload")
+        else:
             args.append("--no-kv-offload")
         if self._n_batch > 0:
             args.extend(["-b", str(self._n_batch)])

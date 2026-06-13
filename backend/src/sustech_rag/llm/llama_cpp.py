@@ -157,7 +157,7 @@ class LlamaCppLauncher:
             args.extend(["-t", str(self._threads)])
         if self._threads_batch > 0:
             args.extend(["-tb", str(self._threads_batch)])
-        if self._reasoning:
+        if self._reasoning and self._reasoning not in ("off", "none", ""):
             args.extend(["--reasoning", self._reasoning])
         # ----- new: memory / perf flags -----
         if self._flash_attn:

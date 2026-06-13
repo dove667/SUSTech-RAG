@@ -112,6 +112,10 @@ class VLLMConfig(LLMSharedConfig):
     generation_config: str = "vllm"
     trust_remote_code: bool = False
     enable_prefix_caching: bool = True
+    enable_chunked_prefill: bool = False
+    kv_cache_dtype: str = ""            # "" = auto; "fp8" on Ada/Hopper
+    num_scheduler_steps: int | None = None
+    swap_space: int | None = None       # CPU swap in GB
     enable_log_requests: bool = False
     disable_uvicorn_access_log: bool = True
     max_parallel_loading_workers: int = 0

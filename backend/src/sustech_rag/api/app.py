@@ -115,7 +115,7 @@ def create_app(config: AppConfig, startup_in_background: bool = True) -> FastAPI
 def run_dev_server(
     config: AppConfig,
     host: str = "0.0.0.0",
-    port: int = 8000,
+    port: int = 8001,
 ) -> None:
     """使用当前进程内的应用实例启动开发服务器，供 CLI `serve` 调用。"""
     import uvicorn

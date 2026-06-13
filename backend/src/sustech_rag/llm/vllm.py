@@ -197,14 +197,6 @@ class VLLMLauncher:
             args.append("--trust-remote-code")
         if cfg.enable_prefix_caching:
             args.append("--enable-prefix-caching")
-        if cfg.enable_chunked_prefill:
-            args.append("--enable-chunked-prefill")
-        if cfg.kv_cache_dtype:
-            args.extend(["--kv-cache-dtype", cfg.kv_cache_dtype])
-        if cfg.num_scheduler_steps is not None:
-            args.extend(["--num-scheduler-steps", str(cfg.num_scheduler_steps)])
-        if cfg.swap_space is not None:
-            args.extend(["--swap-space", str(cfg.swap_space)])
         if cfg.enable_log_requests:
             args.append("--enable-log-requests")
         if cfg.disable_uvicorn_access_log:

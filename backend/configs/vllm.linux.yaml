@@ -58,10 +58,10 @@ llm:
   local_path: "/data1/zsh/models/Qwen3-30B-A3B-Instruct-2507-AWQ"
   served_model_name: "qwen3-30b-a3b-instruct-2507-awq"
   dtype: "float16" # auto
-  gpu_memory_utilization: 0.92
+  gpu_memory_utilization: 0.88
   tensor_parallel_size: 2
   pipeline_parallel_size: 1
-  data_parallel_size: 2              # 2 副本各占 2 卡，25 人并发吞吐翻倍
+  data_parallel_size: 1              # 2 副本各占 2 卡，25 人并发吞吐翻倍
   distributed_executor_backend: "mp"
   max_model_len: 32768
   max_num_seqs: 32
@@ -71,10 +71,6 @@ llm:
   generation_config: "vllm"
   trust_remote_code: false
   enable_prefix_caching: true
-  enable_chunked_prefill: true       # 改善长 prompt TTFT，与 prefix cache 协同
-  kv_cache_dtype: "fp8"              # 4090 Ada 原生 FP8，KV cache 显存减半
-  num_scheduler_steps: 8             # multi-step scheduling，减少 CPU/GPU 同步
-  swap_space: 4                      # 4 GB CPU swap，防止偶发 OOM 崩溃
   enable_log_requests: false
   disable_uvicorn_access_log: true
   max_parallel_loading_workers: 2

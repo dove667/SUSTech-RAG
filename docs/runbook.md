@@ -74,13 +74,13 @@ uv run sustech-rag query "南科大有哪些学院？"
 启动 API：
 
 ```bash
-uv run sustech-rag serve --host 127.0.0.1 --port 8000
+uv run sustech-rag serve --host 127.0.0.1 --port 8001
 ```
 
 健康检查：
 
 ```bash
-curl http://127.0.0.1:8000/api/health
+curl http://127.0.0.1:8001/api/health
 ```
 
 如果要在 Linux 服务器上使用 `vLLM` 多卡部署，并让 backend 去拉起另一个虚拟环境中的
@@ -111,7 +111,7 @@ npm install
 npm run dev
 ```
 
-前端默认把 `/api` 代理到 `127.0.0.1:8000`。
+前端默认把 `/api` 代理到 `127.0.0.1:8001`。
 
 ## 8. 测试
 

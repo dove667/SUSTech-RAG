@@ -150,7 +150,7 @@ llm:
 ```bash
 conda activate backend
 cd /srv/sustech-rag/app/backend
-uv run sustech-rag serve --host 0.0.0.0 --port 8000 --config configs/vllm.qwen35b.yaml
+uv run sustech-rag serve --host 0.0.0.0 --port 8001 --config configs/vllm.qwen35b.yaml
 ```
 
 backend 会自动读取配置中的：
@@ -168,7 +168,7 @@ backend 会自动读取配置中的：
 后端：
 
 ```bash
-curl http://127.0.0.1:8000/api/health
+curl http://127.0.0.1:8001/api/health
 ```
 
 如果配置正常，backend 内部会先等 `vLLM` 就绪，再对外返回 ready。

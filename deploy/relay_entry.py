@@ -8,7 +8,7 @@ import uvicorn
 from fastapi.staticfiles import StaticFiles
 
 # 确保能找到 sustech_rag 包
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend", "src"))
 
 from sustech_rag.relay.server import create_relay_app
 

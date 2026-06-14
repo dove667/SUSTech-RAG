@@ -1,0 +1,60 @@
+\chapter{Self-RAG Reasoning Loop}
+
+A standard RAG pipeline retrieves the top-$k$ chunks and unconditionally feeds them to the language model regardless of whether they actually address the query, or whether the generated response is factually grounded in the evidence. In a closed-domain system like ours---where the knowledge base covers only SUSTech public web content---this creates two distinct failure modes. First, the model may confidently answer an out-of-scope question by drawing on its parametric knowledge, producing a plausible but unverifiable response. Second, retrieved passages may score well on embedding similarity without containing information directly relevant to the specific question asked, leading to responses that are confidently stated but factually unsupported.
+
+Our system addresses both failure modes through a multi-stage reasoning loop inspired by Self-RAG \parencite{selfrag2024}. Rather than fine-tuning the model to emit reflection tokens, we prompt the same Qwen3 model to perform structured classification at each decision point, producing JSON-formatted judgements that drive pipeline branching. The complete loop is illustrated in Figure~\ref{fig:selfrag}.
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=0.55\textwidth]{self_rag.pdf}
+    \caption{Self-RAG reasoning loop. Orange boxes involve LLM inference calls; grey boxes are terminal states. The loop runs for at most two retrieval rounds before falling back to an insufficient-evidence response.}
+    \label{fig:selfrag}
+\end{figure}
+
+\section{Scope Detection}
+
+Before any retrieval is triggered, the LLM is asked whether the query falls within the scope of the SUSTech knowledge base. The model is given a system prompt framing it as a routing classifier: it should output \texttt{\{"should\_retrieve": true\}} for factual questions about SUSTech---departments, administrative procedures, campus events, facilities, and personnel---and \texttt{\{"should\_retrieve": false\}} for clearly out-of-scope requests (general knowledge questions, external information, or casual conversation). When retrieval is not warranted, the system returns a pre-formulated, polite out-of-scope response without invoking the retrieval stack or the generation model, avoiding unnecessary latency and eliminating a class of hallucination entirely.
+
+\section{Per-Candidate Relevance Assessment}
+
+After retrieval and reranking return up to four candidate chunks, each chunk is individually evaluated for relevance to the specific query. The LLM receives the query and the text of each candidate and returns a structured list of relevance judgements:
+
+\begin{verbatim}
+[{"candidate_index": 0, "relevant": true,  "reason": "..."},
+ {"candidate_index": 1, "relevant": false, "reason": "..."}]
+\end{verbatim}
+
+The system prompt instructs the model to apply a strict threshold: a chunk must contain information that \emph{directly} addresses the query, not merely mention related entities or keywords. Chunks whose only connection to the query is topical proximity---sharing a subject domain but not providing the specific fact sought---are marked irrelevant. Only chunks passing this filter proceed to generation.
+
+This step is complementary to, not a replacement for, the cross-encoder reranking already applied. Reranking orders the candidate set by relative relevance but cannot determine that the \emph{entire} retrieved set is tangentially related to the query. The LLM judge introduces an absolute relevance threshold that can reject all candidates if none are genuinely useful.
+
+\section{Factual Support Validation}
+
+After the LLM generates a draft answer from the filtered context, the system validates whether the answer is factually \emph{supported} by the retrieved evidence. A separate LLM call presents the draft answer alongside all retrieved passages and asks the model to return:
+
+\begin{verbatim}
+{"supported": true/false, "reason": "..."}
+\end{verbatim}
+
+The system prompt defines support strictly: every factual claim in the answer must be \emph{explicitly stated} in the retrieved text. Inference, extrapolation, and commonsense completion---even plausible ones---count as unsupported. This is intentionally conservative: the goal is to identify cases where the model has gone beyond the evidence, not to validate answers that are merely consistent with it.
+
+\section{Multi-Round Retrieval and Fallback}
+
+If the support check fails in the first round, the pipeline does not immediately return the unsupported answer. Instead, it initiates a second retrieval round, this time excluding all chunks already assessed in round~1. The intuition is that the first retrieval may have saturated on the most superficially similar passages; by excluding them, the second round is forced to explore a different region of the corpus that might supply the missing evidence.
+
+The loop runs for at most \texttt{max\_rounds}=2 iterations. At the end of each round, relevant chunks are accumulated across rounds, so the second round's context builds on---rather than replaces---evidence found in the first. If after all rounds the evidence still does not support a factual answer, the model generates a response under a system prompt that explicitly instructs it to acknowledge insufficient evidence rather than fabricate. If no relevant chunks are found at all, a separate prompt communicates that the query is within scope but currently unanswerable from the indexed corpus.
+
+\section{Robustness of Structured Output Parsing}
+
+Each LLM-in-the-loop decision point requires the model to produce valid JSON. In practice, language models occasionally emit malformed output: trailing commas, truncated responses due to token limits, or extraneous text surrounding the JSON object. The system uses a two-tier parsing strategy to handle this:
+
+\begin{enumerate}
+    \item \textbf{Constrained generation.} If the LLM backend supports JSON schema enforcement---llama.cpp via GBNF grammar, or vLLM via structured decoding---the model is constrained to emit only tokens matching the required schema. This eliminates malformed output at the source.
+    \item \textbf{Repair fallback.} If constrained generation is unavailable or fails, the system extracts the first JSON-like substring from the raw output and applies a repair pass: it strips leading/trailing non-JSON text, removes trailing commas before closing delimiters, and closes any uncapped braces, brackets, or string quotes by traversing the token stream as a FILO stack.
+\end{enumerate}
+
+This two-tier approach keeps the self-RAG loop functional across all supported backends and quantization configurations, at the cost of additional parsing logic in the fallback path.
+
+\section{Simple RAG Mode}
+
+For latency-sensitive deployments where the overhead of multiple LLM calls is unacceptable, the system provides a simple RAG mode (\texttt{retrieval.mode: "simple"}) that bypasses all reflection steps. In this mode, retrieval, reranking, and generation proceed in a single pass with no branching. The mode is switched via the configuration YAML without modifying application code. This design enables direct comparison of simple and self-RAG behaviour; however, as discussed in Chapter~\ref{ch:limitations}, no quantitative comparison has been conducted.

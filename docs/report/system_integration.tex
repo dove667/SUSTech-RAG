@@ -1,0 +1,27 @@
+\chapter{System Integration}
+
+\section{LLM Backend Abstraction}
+
+The generation layer is implemented behind a common interface with two concrete backends, switchable via the \texttt{llm.backend} field in the configuration YAML. Both backends expose the same methods: \texttt{generate(messages)} for single-turn completion, \texttt{generate\_stream(messages, cancel\_event)} for token-by-token streaming, and optionally \texttt{generate\_with\_schema(messages, schema)} for constrained JSON output. This abstraction makes the rest of the pipeline---including the self-RAG loop---entirely backend-agnostic.
+
+Streaming output uses an event model that distinguishes \emph{thinking} tokens (Qwen3's chain-of-thought reasoning, emitted before the visible response) from \emph{content} tokens (the final answer). The frontend renders these differently: thinking tokens appear in a collapsible section, while content tokens accumulate in the main chat bubble. A \texttt{threading.Event} cancellation handle is threaded through the pipeline to allow in-flight requests to be aborted mid-generation when the user navigates away or clears the conversation.
+
+\section{llama.cpp Backend}
+
+The llama.cpp backend \parencite{llamacpp} manages a \texttt{llama-server} subprocess that loads a GGUF-quantized model file. The default deployment uses \texttt{Qwen3-8B-Q4\_K\_M.gguf}, a 4-bit quantized variant of Qwen3-8B. Key inference parameters include a context window of 8\,192 tokens, temperature 0.2, top-$p$=0.95, KV-cache quantisation (\texttt{q8\_0}) to reduce VRAM footprint, and a batch size of 512. This backend targets CPU or single-GPU machines and is configured for one concurrent request, trading throughput for simplicity.
+
+\section{vLLM Backend}
+
+The vLLM backend \parencite{vllm2023} manages a \texttt{vllm serve} subprocess for the production environment (3$\times$ RTX 4090). It loads \texttt{Qwen3-30B-A3B-Instruct-AWQ}, a 30-billion-parameter mixture-of-experts model with AWQ weight quantisation. Tensor parallelism of degree~2 distributes the model across \texttt{cuda:0} and \texttt{cuda:1}, while the embedding and reranking models are isolated on \texttt{cuda:2} to avoid GPU memory contention. With 88\% GPU memory utilisation, prefix caching, and chunked prefill enabled, the backend supports up to 32 concurrent requests. vLLM's PagedAttention memory management avoids the memory waste of static KV-cache allocation, substantially improving throughput on bursty multi-user workloads.
+
+\section{Frontend Interface}
+
+The frontend is a Vue~3 and Vite application that communicates with the backend via a RESTful API and receives streaming responses through Server-Sent Events (SSE). The SSE protocol carries ten event types; the most significant for the user experience are \texttt{reference} (retrieved source URLs displayed as footnote citations), \texttt{think.delta} and \texttt{think.end} (Qwen3 reasoning stream), and \texttt{content.delta} (response token stream). Multi-session management and user preferences are persisted in browser \texttt{localStorage}. The application adapts its layout automatically between desktop and mobile viewports, and also ships embedded and floating-widget variants for integration into third-party pages.
+
+\section{Relay-Worker Deployment}
+
+For deployments where the GPU machine is behind a NAT or firewall and cannot accept inbound connections, the system provides a relay-worker architecture. A stateless relay process runs on a cloud host with a public IP; it performs no inference and requires minimal compute. GPU workers run on the local machine and establish an outbound WebSocket connection to the relay, registering their capabilities (model name, available VRAM, and empirically measured tokens per second) on connect.
+
+When a query arrives at the relay via HTTP, the relay selects the idle worker with the highest self-reported throughput and forwards the task as a WebSocket message. The worker executes the full RAG pipeline and streams events back to the relay, which re-serialises them as SSE and forwards them to the waiting client. A heartbeat mechanism (30-second interval, 90-second timeout) removes silently disconnected workers. Workers automatically reconnect after a 30-second delay on disconnect.
+
+This architecture decouples API availability from GPU hardware management: the relay can be deployed on a low-cost cloud instance, while GPU workers run wherever the hardware happens to be. Multiple workers can register behind a single relay, with the relay routing new requests to the fastest idle worker.

@@ -1,0 +1,39 @@
+\chapter{Limitations and Future Work}\label{ch:limitations}
+
+\section{Absence of a Quantitative Evaluation}
+
+The most consequential limitation of this project is the absence of a labelled evaluation dataset for the SUSTech domain. Without a collection of (question, reference answer, relevant passages) triples drawn from real campus information needs, it is impossible to measure any aspect of the system's performance quantitatively: not retrieval precision or recall at any rank cutoff, not the faithfulness of generated answers to the retrieved evidence, not end-to-end answer accuracy, and not the marginal contribution of any individual pipeline component.
+
+This matters because the system contains numerous design choices---hybrid retrieval versus dense-only, self-RAG versus simple RAG, specific values of chunk size, top-$k$, and temperature---that are motivated by reasoning and prior work in the retrieval-augmented generation literature but have not been empirically validated on \emph{this} corpus and \emph{this} query distribution. A choice that is correct in expectation over many benchmark datasets may be poorly calibrated for the specific characteristics of Chinese university web content.
+
+Standard RAG evaluation frameworks decompose system quality into dimensions such as context precision (what fraction of retrieved chunks is relevant?), context recall (what fraction of relevant information is retrieved?), faithfulness (is the generated answer entailed by the retrieved context?), and answer relevance (does the answer actually address the question?). Measuring these on even a modest benchmark of 100--200 questions would transform the system from a functioning prototype into a system with known, bounded properties. Constructing such a benchmark---through manual annotation by campus stakeholders or semi-automatic LLM-based question generation followed by human verification---is the single highest-priority item for future work.
+
+\section{Retrieval Quality Cannot Be Assessed}
+
+The hybrid retrieval architecture (dense + sparse + RRF + cross-encoder reranking) is substantially more complex than a dense-only baseline. Complexity is justified only if it improves retrieval quality, and that improvement has not been measured.
+
+Specifically, we do not know whether BM25 sparse retrieval adds information not already captured by BGE dense retrieval on this corpus; whether RRF fusion outperforms either individual ranker alone; or whether the cross-encoder reranker meaningfully reorders the RRF-fused list relative to leaving the RRF ranking unchanged. On a domain-specific Chinese corpus composed largely of short, structured documents, it is plausible that dense retrieval alone would perform comparably to the full hybrid pipeline at lower latency. The only way to resolve this is through ablation experiments over a labelled evaluation set.
+
+\section{Self-RAG Effectiveness is Unverified}
+
+The self-RAG reasoning loop introduces between two and six additional LLM calls per query (scope detection, per-candidate relevance assessment for up to four candidates, support validation, and potentially a second retrieval round). On the llama.cpp backend with a single concurrent request, each call can take several seconds, substantially increasing end-to-end latency compared to simple RAG mode.
+
+Whether this cost is justified by improved answer quality is an open question. The scope detection step may reject legitimate in-scope queries if the classifier is miscalibrated. The per-candidate relevance filter may discard passages that are genuinely useful but indirectly phrased. The support validation step may trigger unnecessary re-retrieval when the answer is correct but worded differently from its source text. All of these are failure modes of the self-RAG approach that would surface under systematic evaluation but are invisible without it. The \texttt{retrieval.mode: "simple"} configuration switch was precisely designed to enable A/B comparison---but that comparison has not been performed.
+
+\section{Data Coverage and Freshness}
+
+The system was indexed from a single crawl capped at 200 pages under the default configuration. This represents a small fraction of the full SUSTech website, which spans thousands of pages. Pages that require authentication, are rendered dynamically by JavaScript, or were simply not reached within the crawl's BFS depth are absent from the index. A user querying for information on such pages will either receive a hallucinated answer (if the language model draws on parametric knowledge without self-RAG flagging it) or an explicit acknowledgement that the information is unavailable.
+
+Campus information is also temporally perishable. Course offerings, administrative contacts, office locations, and event announcements all change on short timescales. The current system has no incremental update mechanism; re-indexing requires a full re-crawl. A production deployment would require a scheduled re-crawl strategy with change detection to avoid re-processing unchanged pages and to surface outdated indexed content for removal.
+
+\section{Future Directions}
+
+In priority order, the most impactful improvements would be:
+
+\begin{enumerate}
+    \item \textbf{Evaluation dataset.} Construct a benchmark of 100--200 (question, answer, relevant passages) triples spanning the range of campus information needs: procedural questions, factual lookups, event queries, and out-of-scope control questions. This is a prerequisite for all subsequent empirical work.
+    \item \textbf{Ablation study.} Measure the isolated contribution of sparse retrieval, RRF fusion, cross-encoder reranking, and self-RAG reflection. Identify which components justify their complexity and latency cost on this specific corpus.
+    \item \textbf{Incremental indexing.} Implement a scheduled re-crawl with page-level change detection (e.g., content hash comparison) to keep the knowledge base current without full re-indexing.
+    \item \textbf{Broader crawl coverage.} Extend the crawl to JavaScript-rendered content via a headless browser, and---with appropriate access permissions---authenticated sections of the website.
+    \item \textbf{Structured data integration.} Campus data in structured formats (course timetables, exam schedules, room availability) is better queried through structured interfaces than through free-text RAG. A hybrid router that dispatches structured queries to a database backend and unstructured queries to the RAG pipeline would serve a wider range of campus information needs.
+\end{enumerate}

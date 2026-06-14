@@ -35,6 +35,7 @@
  
 \usepackage{graphicx}
 \usepackage{placeins}
+\graphicspath{{figures/}}
 
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
@@ -79,14 +80,16 @@
 \tableofcontents 
 \addtocontents{toc}{~\hfill\textbf{Page}\par} % comment this line out if you want to remove "Page"
 \input{introduction}
-\input{architecture}
-\input{backend}
-\input{frontend}
+\input{background}
+\input{data_pipeline}
+\input{retrieval}
+\input{self_rag}
+\input{system_integration}
+\input{limitations}
 \input{conclusion}
 
 %\appendix
 %\input{appendix}
-% you can have more than one appendix if (really) needed.
 
 \printbibliography[keyword=primary, title=References]\addcontentsline{toc}{chapter}{References}
 

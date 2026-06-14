@@ -1,0 +1,46 @@
+\chapter{Data Ingestion Pipeline}
+
+Before retrieval can occur, the raw web content of the SUSTech official website must be transformed into a clean, indexed corpus. Figure~\ref{fig:pipeline} illustrates the complete end-to-end system pipeline; this chapter focuses on the three offline stages: web crawling, text preprocessing and quality filtering, and semantic chunking.
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=\textwidth]{pipeline.pdf}
+    \caption{End-to-end RAG pipeline. Blue boxes represent the offline indexing phase; green boxes represent the online inference phase.}
+    \label{fig:pipeline}
+\end{figure}
+
+\section{Web Crawling}
+
+The crawler performs a breadth-first search (BFS) traversal starting from a configurable set of seed URLs. At each step it fetches the current page, extracts outgoing links, and enqueues those that (a) belong to the same domain, (b) do not resolve to non-text resources (\texttt{.jpg}, \texttt{.zip}, \texttt{.doc}, and similar extensions), and (c) have not already been visited. Traversal halts when the queue is empty or the page limit is reached (default: 200 pages).
+
+URL normalisation is applied before deduplication. Query parameters associated with analytics and tracking (\texttt{utm\_*}, \texttt{spm}, \texttt{source}, \texttt{\_t}, \texttt{\_refluxos}) are stripped, fragment identifiers are removed, and duplicate query keys are collapsed. Without this step, the same content page would be indexed multiple times under different tracking-annotated URLs, inflating the corpus and skewing retrieval results.
+
+Content extraction uses a two-stage approach. The primary extractor applies \texttt{readability-lxml}, which identifies the main article body using heuristics similar to browser reader modes. When readability fails or returns empty output, a fallback extractor uses BeautifulSoup to prune the DOM of non-content elements (navigation bars, scripts, stylesheets, footers, sidebars, iframes) and select the most content-rich remaining subtree. Each page's raw HTML and extracted text are persisted to disk alongside its source URL for provenance tracking.
+
+\section{Text Preprocessing and Quality Filtering}
+
+Raw extracted text contains substantial noise: navigation remnants, copyright footers, repeated boilerplate, and pages that are effectively empty after extraction. The preprocessing stage applies a series of filters at both the line and document level.
+
+\paragraph{Line-level cleaning.} Lines matching known boilerplate patterns---copyright notices, ICP filing identifiers, and similar administrative footers---are dropped. Three or more consecutive blank lines are collapsed to two. A broader set of boilerplate markers (phone numbers, postal codes, QR-code mentions, login prompts) is used to identify lines as non-substantive without discarding them from the raw output; their prevalence is instead used in the document-level quality score.
+
+\paragraph{Document-level quality gating.} A document is accepted only if it satisfies three criteria simultaneously:
+\begin{enumerate}
+    \item Its total character count exceeds a minimum threshold of 60~characters.
+    \item The proportion of repeated lines---lines of eight or more characters that appear more than once, excluding pure dates and numeric sequences---does not exceed 35\%.
+    \item It contains at least one \emph{substantive} line: either a line of 24 or more characters, or one containing Chinese sentence-ending punctuation (full stop, exclamation mark, question mark, or semicolon in full-width form).
+\end{enumerate}
+Documents that fail any criterion are discarded before chunking. The thresholds are intentionally conservative: false negatives (keeping noisy documents) are more harmful to downstream retrieval quality than false positives (discarding borderline content), since a noisy chunk occupying a retrieval slot can directly cause a confusing or incorrect response.
+
+\section{Semantic Chunking Strategy}
+
+Splitting documents into chunks of a size suitable for dense retrieval while preserving semantic coherence is a genuinely non-trivial problem. A naive fixed-window approach that splits every 500 characters without regard for sentence or paragraph structure routinely cuts sentences mid-thought, creating chunks that are internally incomplete and misleading to a retriever.
+
+Our chunker uses a \emph{paragraph-first} strategy. Documents are first split at double-newline boundaries into paragraphs. Short paragraphs are accumulated in a running buffer until the combined length approaches the target chunk size (default: 500 characters), then flushed as a single chunk. Paragraphs that individually exceed the target size are processed by a sentence-level splitter (\texttt{SentenceSplitter} from LlamaIndex), configured with a 100-character overlap between consecutive sentence-level chunks.
+
+Two special cases are handled explicitly:
+
+\paragraph{Structured announcement pages.} Many campus pages follow a short template: a title followed by rows of key-value pairs (e.g.\ ``Time: 2025-09-01'', ``Location: Building 1'', ``Contact: Ms.\ Li''). Splitting such pages at sentence boundaries destroys the table-like structure and renders individual chunks meaningless out of context. The chunker detects these pages using three criteria: at least three lines, total content under 750 characters, and at least 50\% of lines matching structural patterns (colon separators, Chinese field-name keywords, or date formats). Pages satisfying all three criteria are preserved as a single chunk regardless of length.
+
+\paragraph{Short chunk merging.} After the initial split, chunks shorter than $\max(120,\, \text{chunk\_size}/3)$ characters are merged with an adjacent neighbour, provided the merged result stays within $1.35\times\text{chunk\_size}$ characters. This post-processing step eliminates sparse ``island'' chunks---typically trailing sentence fragments at the end of a section---that would occupy retrieval slots without providing useful context.
+
+Each chunk retains metadata linking it to its source URL, page title, document identifier, and the content extractor (readability or BeautifulSoup fallback) that produced the original page. This provenance information is used to generate source citations in the frontend interface and to support debugging of pipeline failures.

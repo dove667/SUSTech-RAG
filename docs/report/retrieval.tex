@@ -1,0 +1,41 @@
+\chapter{Retrieval and Reranking}
+
+Given an indexed corpus of chunks, the retrieval stage must identify those most likely to contain information relevant to a user's query. This chapter describes the two complementary retrieval signals the system uses, how they are combined, and the reranking step that selects the final context passed to the language model.
+
+\section{Dense Retrieval with BGE Embeddings}
+
+Dense retrieval encodes both queries and chunks as fixed-dimensional vectors and finds relevant chunks by nearest-neighbour search in that vector space. Because the model encodes semantic content rather than surface lexical form, it can retrieve passages that are topically relevant even when their vocabulary diverges from the query.
+
+The system uses BGE (\textit{BAAI General Embedding}) models \parencite{bge2024}, with a choice of model scaled to the deployment environment: \texttt{BAAI/bge-small-zh-v1.5} for lightweight local inference and \texttt{Qwen/Qwen3-Embedding-4B} (bfloat16, batch size 4, \texttt{cuda:2}) for the production GPU server. Both models have strong performance on Chinese text, which comprises the majority of the SUSTech website's content. Embeddings are stored persistently in ChromaDB \parencite{chromadb}. At query time, the query is embedded with the same model and used to retrieve the top $k$ chunks by cosine similarity ($k=8$ by default).
+
+\section{Sparse Retrieval with BM25}
+
+Dense retrieval can fail on queries that require exact keyword matching---specific course codes, building names, or proper nouns that may not cluster closely to their descriptions in the embedding space. BM25 \parencite{bm25Robertson2009} addresses this limitation through a term-frequency and inverse-document-frequency scoring scheme that rewards documents containing the query's exact terms, particularly rare ones.
+
+The system maintains a BM25 index built from \texttt{chunks.jsonl} at indexing time. At query time, sparse retrieval independently returns a top-$k$ candidate list ($k=8$ by default). This list may overlap with or be entirely disjoint from the dense retrieval results, depending on the nature of the query.
+
+\section{Reciprocal Rank Fusion}
+
+Dense and sparse candidate lists are merged using Reciprocal Rank Fusion (RRF) \parencite{rrf2009}. For a chunk $d$ appearing at position $\text{pos}_r(d)$ in ranked list $r$, its RRF score is defined as:
+
+\begin{equation}
+    \text{RRF}(d) = \sum_{r \in R} \frac{1}{k + \text{pos}_r(d)}
+    \label{eq:rrf}
+\end{equation}
+
+where $R$ is the set of rankers (dense and sparse) and $k=60$ is a smoothing constant. Chunks absent from a ranker's list contribute zero from that term. The merged list is sorted by decreasing RRF score and passed to the reranker.
+
+RRF is attractive precisely because it requires no score-level normalisation. The cosine similarity scores produced by BGE and the BM25 term-frequency scores are incommensurable and cannot be combined directly. By operating on ranks rather than scores, RRF treats both signals symmetrically without any calibration. The value $k=60$ follows \textcite{rrf2009}, who found it robust across multiple retrieval benchmarks. Dense and sparse retrieval are executed in parallel using a thread pool to minimise added latency.
+
+\section{Cross-Encoder Reranking}
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=0.55\textwidth]{hybrid.pdf}
+    \caption{Hybrid retrieval and reranking architecture. Dense and sparse retrieval run in parallel; their ranked lists are merged by RRF and re-scored by a cross-encoder.}
+    \label{fig:hybrid}
+\end{figure}
+
+The RRF-fused list may still contain passages that are topically adjacent to the query but do not actually contain the sought information. Bi-encoder models, used for dense retrieval, encode query and document independently, which limits their ability to model fine-grained query-passage interaction. Cross-encoder models \parencite{sentencetransformers2019} concatenate query and passage as a single input and score them through full self-attention, enabling richer interaction at the cost of higher per-candidate compute. They cannot be applied to the full corpus (where latency would be prohibitive) but are well-suited to re-scoring a small pre-filtered candidate set.
+
+The reranker uses BGE cross-encoder models (\texttt{BAAI/bge-reranker-v2-m3} in the default configuration, \texttt{Qwen/Qwen3-Reranker-4B} in production, placed on \texttt{cuda:2}). It scores each RRF-fused candidate against the query and returns the top $n=4$ chunks by reranker score. These four chunks form the context passed to the self-RAG reasoning loop or, in simple RAG mode, directly to the language model for generation.

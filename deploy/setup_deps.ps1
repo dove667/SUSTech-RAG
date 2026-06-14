@@ -70,6 +70,7 @@ if (-not (Test-Path "data\models\llm\qwen\Qwen3-8B-Q4_K_M.gguf")) {
 Write-Host "  Model OK." -ForegroundColor Green
 
 Write-Host ""
-Write-Host "Environment ready. Start Worker:" -ForegroundColor Green
+Write-Host "Environment ready. Start:" -ForegroundColor Green
 Write-Host "  cd $WorkerDir\backend" -ForegroundColor Gray
-Write-Host "  uv run sustech-rag worker --relay wss://<relay-host>/ws/worker" -ForegroundColor Gray
+Write-Host "  uv run sustech-rag worker --relay wss://<relay-host>/ws/worker    # relay worker" -ForegroundColor Gray
+Write-Host "  uv run sustech-rag serve                                         # local API server" -ForegroundColor Gray

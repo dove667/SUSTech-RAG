@@ -74,6 +74,7 @@ Please download the model first, then re-run this script:
 fi
 log "Model OK."
 
-log "Environment ready. Start Worker:"
+log "Environment ready. Start:"
 echo "  cd $WORKER_DIR/backend"
-echo "  uv run sustech-rag worker --relay wss://<relay-host>/ws/worker"
+echo "  uv run sustech-rag worker --relay wss://<relay-host>/ws/worker    # relay worker"
+echo "  uv run sustech-rag serve                                         # local API server"

@@ -9,36 +9,8 @@
 1. [README.md](README.md)
 2. [backend/README.md](backend/README.md)
 3. [frontend/README.md](frontend/README.md)
-4. [docs/project-guide.md](docs/project-guide.md)
-5. [docs/runbook.md](docs/runbook.md)
-
-## 本地开发
-
-后端：
-
-```bash
-cd backend
-uv sync --extra dev
-uv run pytest
-uv run ruff check .
-```
-
-前端：
-
-```bash
-cd frontend
-npm install
-npm run build
-```
-
-完整构建知识库：
-
-```bash
-cd backend
-uv run sustech-rag crawl
-uv run sustech-rag preprocess
-uv run sustech-rag index
-```
+4. [backend/docs/BACKEND-DEV-GUIDE.md](backend/docs/BACKEND-DEV-GUIDE.md)
+5. [docs/RUNBOOK.md](docs/RUNBOOK.md)
 
 ## 分支与提交
 

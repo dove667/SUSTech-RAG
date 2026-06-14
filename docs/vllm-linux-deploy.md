@@ -1,211 +1,105 @@
 # vLLM Linux 部署
 
-本文针对下面这类部署方式：
+本文针对以下部署环境：
 
-- 同一台 Linux 服务器同时运行 `backend` 和 `vLLM`
-- `backend` 与 `vLLM` 默认共用同一个环境
-- 启动入口仍然只有一个：`uv run sustech-rag serve`
-- 目标机器：`4 * RTX 4090`
-- 目标模型：`Qwen/Qwen3.6-35B-A3B-FP8`
-- 推荐检索模型：`Qwen/Qwen3-Embedding-4B` + `Qwen/Qwen3-Reranker-4B`
+- 3 张 RTX 4090，CUDA driver 较旧（CUDA 11.8 兼容）
+- `cuda:0` + `cuda:1`：运行大模型（tensor parallel，2 卡）
+- `cuda:2`：运行 embedding 和 reranker
+- 配置文件：`backend/configs/vllm.linux.yaml`
 
-## 1. 总体结构
+## 依赖版本说明
 
-推荐目录：
+项目 Python 依赖锁定了与旧 CUDA driver 兼容的版本组合：
 
-```text
-/srv/sustech-rag/
-  app/                         本仓库
-```
+- `torch==2.7.1`，从 `pytorch-cu118` 源安装（`https://download.pytorch.org/whl/cu118`）
+- `vllm==0.10.1`，Linux 平台条件依赖，随 `uv sync` 自动安装
 
-职责分工：
+这是经过权衡后的版本组合：更新的版本需要更高版本的 CUDA driver，更旧的版本不支持当前使用的模型。**不要单独升级 torch 或 vllm**，两者需要作为整体一起调整。
 
-- `backend` 环境：安装本项目后端依赖，同时在 Linux 上自动安装 `vllm==0.21.0`
-- `app/backend/configs/vllm.linux.example.yaml`：告诉 backend 如何启动同环境中的 `vllm serve`
-
-## 2. 准备 backend 环境
+## 1. 准备环境
 
 ```bash
-cd /srv/sustech-rag/app/backend
-conda create -n backend python=3.11 -y
-conda activate backend
-pip install -U pip
-pip install uv
+cd /srv/sustech-rag/backend    # 或你的实际路径
 uv sync
 ```
 
-如需测试和 lint：
+`uv sync` 会自动创建 `.venv`，从 `pytorch-cu118` 源安装 torch，并安装 `vllm==0.10.1`。Linux 上无需单独创建 conda 环境。
+
+确认 vllm 可用：
 
 ```bash
-uv sync --extra dev
-```
-在 Linux 上，`vllm==0.21.0` 已经通过 `pyproject.toml` 的平台条件依赖自动加入当前环境；在 macOS / Windows 上则不会安装。
-
-确认可执行文件存在：
-
-```bash
-which vllm
-vllm --help
+uv run vllm --help
 ```
 
-## 3. 准备索引与辅助模型
+## 2. 配置文件
 
-以下步骤使用 `backend` 环境执行：
-
-```bash
-conda activate backend
-cd /srv/sustech-rag/app/backend
-uv run sustech-rag crawl
-uv run sustech-rag preprocess
-uv run sustech-rag index
-```
-
-如果你已经提前准备好了 `data/` 目录，也可以直接复用，不必重新抓取和建库。
-
-如果这台 Linux 服务器主要承担正式推理服务，我建议把样例配置里的检索模型也一起切到：
-
-- `embedding.model_name: Qwen/Qwen3-Embedding-4B`
-- `retrieval.reranker_model: Qwen/Qwen3-Reranker-4B`
-
-对应的样例文件已经按这组模型更新好了。
-
-## 4. 准备 vLLM 配置
-
-复制一份样例配置：
-
-```bash
-cd /srv/sustech-rag/app/backend
-cp configs/vllm.linux.example.yaml configs/vllm.qwen35b.yaml
-```
-
-建议至少检查这些字段：
+使用 `configs/vllm.linux.yaml`，关键字段：
 
 ```yaml
 embedding:
   model_name: "Qwen/Qwen3-Embedding-4B"
-  local_path: "data/models/embeddings/Qwen/Qwen3-Embedding-4B"
-  batch_size: 4
-  device: ""
+  local_path: "/data1/zsh/models/Qwen3-Embedding-4B"
+  device: "cuda:2"
   dtype: "bfloat16"
 
 retrieval:
   reranker_model: "Qwen/Qwen3-Reranker-4B"
-  reranker_local_path: "data/models/rerankers/Qwen/Qwen3-Reranker-4B"
-  reranker_device: ""
+  reranker_local_path: "/data1/zsh/models/Qwen3-Reranker-4B"
+  reranker_device: "cuda:2"
   reranker_dtype: "bfloat16"
 
 llm:
   backend: "vllm"
-  temperature: 0.2
-  max_tokens: 1024
-  max_concurrent_requests: 32
-  server_port: 8081
-  binary_path: ""
-  model_name: "Qwen/Qwen3.6-35B-A3B-FP8"
-  served_model_name: "qwen3.6-35b-a3b-fp8"
-  dtype: "auto"
-  tensor_parallel_size: 4
+  local_path: "/data1/zsh/models/Qwen3-30B-A3B-Instruct-2507-AWQ"
+  served_model_name: "qwen3-30b-a3b-instruct-2507-awq"
+  tensor_parallel_size: 2        # cuda:0 + cuda:1
   distributed_executor_backend: "mp"
-  max_model_len: 32768
-  max_num_seqs: 32
-  max_num_batched_tokens: 12288
   reasoning_parser: "qwen3"
 ```
 
-当前样例已经把这两个小模型的 dtype 备注成 `bfloat16`。`device` 先留空，表示继续走底层库默认设备选择。
+将 `local_path` / `reranker_local_path` / `embedding.local_path` 改为实际模型路径。
 
-这点需要特别注意：
-
-- 现在代码里如果 `device` 留空，`SentenceTransformer` / `CrossEncoder` 会在检测到 CUDA 时优先用 GPU
-- 这通常等价于落到“当前可见的第一张卡”，实践里可以理解成 `cuda:0`
-- 但如果 `vLLM` 已经用 `tensor_parallel_size: 4` 占满 4 张 4090，就不建议再默认把这两个小模型塞进 `cuda:0`
-
-更稳的做法通常是二选一：
-
-- 保持 `device: ""` 和 `reranker_device: ""`，让它们跑 CPU
-- 或者明确写成 `cuda:0` / `cuda:1`，但前提是你给 `vLLM` 留了显存余量，或者本来就没把 4 张卡全部占满
-
-## 5. 为什么先用 FP8
-
-对 `4 * 4090` 来说，我建议先从 `Qwen/Qwen3.6-35B-A3B-FP8` 起步，原因很实际：
-
-- 显存压力更小，给 KV cache 和 batch 调度留更多余量
-- 更适合先把服务稳定跑起来
-- 当前项目检索链路本身已经占用一定 CPU/内存资源，LLM 侧保守一些更稳
-
-如果你后续实测发现非 `FP8` 版本更适合你的负载，只需要把：
-
-```yaml
-llm:
-  model_name: "Qwen/Qwen3.6-35B-A3B"
-  served_model_name: "qwen3.6-35b-a3b"
-```
-
-改掉即可，其他大部分参数可以保持不变。
-
-## 6. 启动服务
-
-只需要启动 backend：
+## 3. 构建知识库
 
 ```bash
-conda activate backend
-cd /srv/sustech-rag/app/backend
-uv run sustech-rag serve --host 0.0.0.0 --port 8001 --config configs/vllm.qwen35b.yaml
+uv run sustech-rag crawl --config configs/vllm.linux.yaml
+uv run sustech-rag preprocess --config configs/vllm.linux.yaml
+uv run sustech-rag index --config configs/vllm.linux.yaml
 ```
 
-backend 会自动读取配置中的：
+已有 `data/` 目录时可直接复用，不必重新抓取。
 
-- `llm.backend: vllm`
-- `llm.binary_path`
+## 4. 启动服务
 
-如果 `llm.binary_path` 为空，backend 会直接拉起当前环境里的 `vllm serve ...`。
-只有在你想显式指向另一个可执行文件时，才需要填写 `binary_path`。
+```bash
+uv run sustech-rag serve --host 0.0.0.0 --port 8001 --config configs/vllm.linux.yaml
+```
 
-也就是说，最终仍然是一条命令启动完整服务。
+backend 会读取配置中的 `llm.backend: vllm`，自动拉起当前环境中的 `vllm serve`。首次启动较慢（模型加载 + warm-up）。
 
-## 7. 健康检查
-
-后端：
+健康检查：
 
 ```bash
 curl http://127.0.0.1:8001/api/health
 ```
 
-如果配置正常，backend 内部会先等 `vLLM` 就绪，再对外返回 ready。
+## 5. 常见调整
 
-## 8. 常见调整
+**吞吐偏低：**
+- 调大 `llm.max_num_seqs`
+- 调大 `llm.max_concurrent_requests`
+- 确认 `tensor_parallel_size: 2` 已生效
 
-吞吐偏低：
-
-- 先调大 `llm.max_num_seqs`
-- 再观察 `llm.max_concurrent_requests`
-- 确认 `tensor_parallel_size: 4` 已生效
-- 如果显存主要给生成模型，`embedding.batch_size` 可以先保持 `4`
-
-显存吃紧：
-
+**显存吃紧：**
 - 先降低 `max_model_len`
 - 再降低 `max_num_batched_tokens`
-- 最后再降低 `max_num_seqs`
-- 如果检索模型也放在同机 GPU 上，可以再把 `embedding.batch_size` 调小
-- 如果检索模型要上 GPU，优先显式写 `embedding.device` 和 `retrieval.reranker_device`，不要隐式赌默认卡位
+- 最后降低 `max_num_seqs`
+- embedding / reranker 固定在 `cuda:2`，不与 LLM 争显存
 
-启动慢：
+**找不到 vllm：**
+- 确认在 `backend/` 目录下通过 `uv run` 调用，不要直接用系统 `vllm`
+- 手动运行 `uv run vllm --help` 验证
 
-- 35B 级别模型首启较慢是正常现象
-- `vLLM` 的 warm-up 完成后，后续请求会稳定很多
-
-找不到 `vllm`：
-
-- 先执行 `which vllm`
-- 如果 `llm.binary_path` 非空，再检查它是否指向真实文件
-- 手动运行一次 `vllm --help`
-
-## 9. 推荐的最小上线流程
-
-1. 在服务器上准备好一个 `backend` 环境。
-2. 在这个环境里执行 `uv sync`，让 `vllm==0.21.0` 随 Linux 平台依赖一起装好。
-3. 用这个环境完成建索引和配置检查。
-4. 默认保持 `configs/vllm.qwen35b.yaml` 中的 `binary_path: ""`。
-5. 执行 `uv run sustech-rag serve --config configs/vllm.qwen35b.yaml`。
-6. 用 `/api/health` 和前端实际对话做验收。
+**CUDA driver 报错：**
+- 确认用的是 `pytorch-cu118` 源的 torch，不要混用其他源安装的 torch
+- `python -c "import torch; print(torch.version.cuda)"` 应输出 `11.8`

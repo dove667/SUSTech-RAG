@@ -1,0 +1,6 @@
+\chapter*{Abstract}
+This project presents a local-first Retrieval-Augmented Generation (RAG) system designed for querying publicly available web content from Southern University of Science and Technology (SUSTech). The system integrates web data acquisition, text preprocessing, semantic chunking, vector-based retrieval, reranking, and large language model generation into a unified pipeline for natural language question answering.
+
+The backend is implemented in Python with FastAPI, supporting configurable LLM backends including llama.cpp and vLLM. It adopts BGE models for embedding and reranking, and Qwen3-based models for response generation. The frontend is developed using Vue 3 and Vite, providing a responsive web interface with streaming responses via Server-Sent Events (SSE), multi-session support, and customizable UI themes.
+
+The system is designed to be modular and deployment-flexible, enabling operation across local environments and GPU-enabled servers. By combining efficient retrieval mechanisms with generative models, the system significantly improves the accessibility and usability of campus information.

@@ -1,0 +1,34 @@
+\chapter{Introduction}
+\section{Motivation}
+
+University websites contain a large amount of important but fragmented information, including academic announcements, administrative notices, and campus services. Traditional keyword-based search systems are often insufficient for accurately capturing user intent, making information retrieval both inefficient and inconvenient.
+
+With the rapid development of large language models (LLMs), Retrieval-Augmented Generation (RAG) \parencite{rag2020} has emerged as an effective paradigm that combines external knowledge retrieval with generative capabilities, enabling systems to deliver more accurate, context-aware, and fluent natural language responses.
+
+Motivated by these limitations and opportunities, this project builds a local-first RAG system tailored to SUSTech's public web content, improving the accessibility and usability of campus information through natural language interaction.
+
+
+\section{Contributions}\label{sec:contrib}
+This project makes the following contributions:
+
+\begin{itemize}
+    \item We design and implement a complete RAG pipeline for SUSTech public web content, integrating data acquisition, preprocessing, semantic chunking, vector retrieval, reranking, and LLM generation.
+
+    \item We develop a modular backend based on FastAPI, supporting multiple LLM inference backends—llama.cpp \parencite{llamacpp} and vLLM \parencite{vllm2023}—enabling flexible deployment across heterogeneous hardware environments.
+
+    \item We construct a semantic retrieval system using BGE \parencite{bge2024} embedding and reranking models backed by a ChromaDB \parencite{chromadb} vector store, improving retrieved-context relevance for generation.
+
+    \item We design a Vue~3-based frontend with streaming response support via SSE, multi-session management, and a customizable UI, providing an interactive and responsive user experience.
+
+    \item We adopt a local-first architecture that operates independently of external APIs, ensuring data privacy, controllability, and extensibility.
+\end{itemize}
+
+\section{System Overview}
+
+The proposed system follows a standard RAG pipeline consisting of a backend service and a frontend application.
+
+The backend handles data processing and model inference. It first collects publicly available web pages from the SUSTech official website. Raw text is cleaned, segmented into semantic chunks, and encoded into vector embeddings using BGE models \parencite{bge2024}. These embeddings are stored in a ChromaDB vector index \parencite{chromadb} for efficient similarity search. At query time, the system retrieves the most relevant chunks, applies a reranking model to refine relevance, and feeds the resulting context into a Qwen3 language model \parencite{qwen2025} for response generation.
+
+The frontend provides an interactive chat interface built with Vue~3 and Vite. It communicates with the backend over RESTful APIs and receives streamed responses via Server-Sent Events (SSE), supporting multi-session management and UI customization.
+
+Overall, the system forms a complete end-to-end RAG workflow, connecting web data acquisition, semantic retrieval, and generative AI into a unified application.

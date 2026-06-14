@@ -1,0 +1,53 @@
+\chapter{Frontend Design and Integration}
+\section{Routing and Page Structure}
+
+The frontend defines multiple entry routes to support desktop, mobile, embedded, and auxiliary usage scenarios. Each route maps to a dedicated UI layout optimised for its target environment:
+
+\begin{itemize}
+    \item \textbf{/} — Desktop chat interface
+    \item \textbf{/mobile} — Mobile-optimised chat interface
+    \item \textbf{/settings} — Configuration and settings page
+    \item \textbf{/embed} — Full-page embedded interface
+    \item \textbf{/ball} — Floating entry widget for embedding in third-party pages
+    \item \textbf{/binarize.html} — Standalone static utility page
+\end{itemize}
+
+The root application component (\texttt{App.vue}) dynamically switches between desktop and mobile layouts according to browser viewport width. Embedded, floating, and settings views are excluded from this automatic switching to preserve their specific layout constraints.
+
+\section{Backend Integration}
+
+The backend service is started with:
+
+\begin{verbatim}
+uv run sustech-rag serve --host 127.0.0.1 --port 8001
+\end{verbatim}
+
+The frontend is launched separately with \texttt{npm run dev}. By default it routes all \texttt{/api} requests to the backend via a Vite proxy, so no absolute URL configuration is needed for local development. For cross-origin deployments the API base URL can be set to a full endpoint such as \texttt{http://127.0.0.1:8001/api}, and the backend CORS policy must be extended to permit the frontend's origin.
+
+\section{State Management and Persistence}
+
+Client-side state is persisted in browser \texttt{localStorage} under two keys:
+
+\begin{itemize}
+    \item \texttt{ragwebui:chats:v1} — conversation history across sessions
+    \item \texttt{ragwebui:settings:v1} — user preferences and UI configuration
+\end{itemize}
+
+On initial load the frontend calls \texttt{POST /api/identity} to obtain a server-issued user identity. If the backend is unreachable, a locally generated fallback ID is used so the UI remains functional in offline or degraded conditions.
+
+\section{SSE Streaming Protocol}
+
+Model responses are delivered over a structured Server-Sent Events (SSE) stream. The protocol defines the following event types:
+
+\begin{itemize}
+    \item \texttt{start} — signals the beginning of a response stream
+    \item \texttt{reference} — carries retrieved source chunks shown as citations
+    \item \texttt{think.delta} / \texttt{think.end} — incremental chain-of-thought tokens and end marker
+    \item \texttt{content.delta} — incremental response tokens
+    \item \texttt{tool.call} / \texttt{tool.result} — reserved for agentic tool-use extensions
+    \item \texttt{image} — reserved for multimodal output
+    \item \texttt{error} — communicates recoverable or terminal errors to the client
+    \item \texttt{done} — signals successful stream completion
+\end{itemize}
+
+The current backend emits \texttt{start}, \texttt{reference}, \texttt{think.delta}, \texttt{think.end}, \texttt{content.delta}, \texttt{error}, and \texttt{done}. A full protocol specification is maintained in \texttt{docs/API.md}.

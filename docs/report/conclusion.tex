@@ -1,0 +1,9 @@
+\chapter{Conclusion}
+
+This report describes the design and implementation of a local-first Retrieval-Augmented Generation system for natural language querying of publicly available web content from SUSTech.
+
+The system covers the full pipeline from web crawling and text preprocessing through semantic chunking, dense vector retrieval, reranking, and LLM generation. The modular backend abstracts over multiple inference engines—llama.cpp and vLLM—allowing the same codebase to run on a laptop CPU or a multi-GPU server. The Vue~3 frontend delivers a responsive chat experience with real-time token streaming, multi-session persistence, and configurable UI themes.
+
+Practical evaluation shows that combining BGE-based dense retrieval with cross-encoder reranking meaningfully improves answer relevance compared to keyword search alone. The relay-worker deployment mode further decouples the user-facing service from the GPU machine, enabling flexible distributed operation.
+
+Future directions include expanding the crawled data to cover more SUSTech subdomains, exploring hybrid sparse-dense retrieval for improved recall on exact-match queries, and integrating tool-use capabilities to handle structured campus data such as course schedules and room bookings.

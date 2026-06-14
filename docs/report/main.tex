@@ -78,11 +78,14 @@
 \input{Abstract} %% any other "Front matter" should go here before the table of contents - format in a style similar to the file Abstract.tex
 \tableofcontents 
 \addtocontents{toc}{~\hfill\textbf{Page}\par} % comment this line out if you want to remove "Page"
-\input{Chapter1} % standard chapter format
+\input{introduction}
+\input{architecture}
+\input{backend}
+\input{frontend}
+\input{conclusion}
 
-%\input{Conclusions}
 %\appendix
-%\input{appendix}  % uncomment out these two lines of code if you have an appendix!
+%\input{appendix}
 % you can have more than one appendix if (really) needed.
 
 \printbibliography[keyword=primary, title=References]\addcontentsline{toc}{chapter}{References}

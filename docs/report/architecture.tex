@@ -1,0 +1,29 @@
+\chapter{System Architecture}
+
+\section{Architecture Overview}
+
+The system follows a modular RAG architecture composed of three main layers: data ingestion, backend RAG pipeline, and frontend interaction interface. The overarching goal is to transform unstructured web content from the SUSTech official website into a queryable semantic knowledge system that responds to natural language queries.
+
+A clear separation of concerns is maintained across layers: data processing, retrieval and generation, and user interaction are each independently encapsulated. This design improves maintainability, facilitates component-level upgrades, and supports flexible deployment configurations.
+
+\section{Backend and Frontend Interaction}
+
+The backend is implemented in Python using FastAPI. It handles the full document lifecycle: processing raw crawled pages, generating vector embeddings, indexing them in ChromaDB, performing retrieval and reranking at query time, and running LLM inference. The backend exposes RESTful API endpoints that accept query requests and return streaming responses.
+
+The frontend is built with Vue~3 and Vite. It renders an interactive chat interface, communicates with the backend over HTTP, and receives model output incrementally via Server-Sent Events (SSE). Additional features include multi-session management, local persistence of conversation history, and UI customization options.
+
+This layered separation allows backend computation and frontend interaction to scale independently, and enables alternative frontend or backend implementations to be substituted without coupling.
+
+\section{Design Characteristics}
+
+The architecture is characterized by the following properties:
+
+\begin{itemize}
+    \item \textbf{Modularity:} Each stage of the pipeline—ingestion, retrieval, generation, and UI—is independently implemented and can be replaced or upgraded without affecting other components.
+
+    \item \textbf{Flexibility:} The backend abstracts LLM inference behind a common interface, supporting both llama.cpp \parencite{llamacpp} and vLLM \parencite{vllm2023} as interchangeable backends for deployment across different hardware environments.
+
+    \item \textbf{Scalability:} Dense vector retrieval over ChromaDB \parencite{chromadb} supports efficient search across large document collections without requiring full re-indexing on incremental updates.
+
+    \item \textbf{Interactivity:} Streaming responses via SSE deliver tokens to the frontend as they are generated, minimizing perceived latency and enabling real-time interaction.
+\end{itemize}

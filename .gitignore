@@ -41,6 +41,19 @@ tmp/
 temp/
 
 AGENTS.md
+CLAUDE.md
 *.pptx
 
 frpc*
+
+# LaTeX build artifacts
+docs/report/main.aux
+docs/report/main.bbl
+docs/report/main.bcf
+docs/report/main.blg
+docs/report/main.lof
+docs/report/main.log
+docs/report/main.lot
+docs/report/main.out
+docs/report/main.run.xml
+docs/report/main.toc

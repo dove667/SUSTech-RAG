@@ -11,7 +11,7 @@ Before retrieval can occur, the raw web content of the SUSTech official website 
 
 \section{Web Crawling}
 
-The crawler performs a breadth-first search (BFS) traversal starting from a configurable set of seed URLs. At each step it fetches the current page, extracts outgoing links, and enqueues those that (a) belong to the same domain, (b) do not resolve to non-text resources (\texttt{.jpg}, \texttt{.zip}, \texttt{.doc}, and similar extensions), and (c) have not already been visited. Traversal halts when the queue is empty or the page limit is reached (default: 200 pages).
+The crawler performs a breadth-first search (BFS) traversal starting from a configurable set of seed URLs. At each step it fetches the current page, extracts outgoing links, and enqueues those that (a) belong to the same domain, (b) do not resolve to non-text resources (\texttt{.jpg}, \texttt{.zip}, \texttt{.doc}, and similar extensions), and (c) have not already been visited. For the corpus used in this project, the crawler was run until the queue was exhausted, collecting approximately 200 pages from the SUSTech website. After preprocessing and quality filtering, the documents that passed the quality gate were segmented into chunks for indexing.
 
 URL normalisation is applied before deduplication. Query parameters associated with analytics and tracking (\texttt{utm\_*}, \texttt{spm}, \texttt{source}, \texttt{\_t}, \texttt{\_refluxos}) are stripped, fragment identifiers are removed, and duplicate query keys are collapsed. Without this step, the same content page would be indexed multiple times under different tracking-annotated URLs, inflating the corpus and skewing retrieval results.
 

@@ -11,7 +11,6 @@
 \usepackage[style=authoryear, defernumbers=true, backend=biber,dashed=false, maxnames=999,maxcitenames=3,giveninits=true,urldate=long,uniquename=false,uniquelist=false
 ]{biblatex}
 \addbibresource{references.bib}
-%\addbibresource{biblio.bib}
 
 %% pretty captions
 \usepackage{caption}
@@ -40,6 +39,7 @@
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
 \usepackage{csquotes}
+\usepackage{indentfirst}
 
 \usepackage{fancyhdr}
 \pagestyle{fancy}
@@ -76,11 +76,13 @@
 
 \begin{document}
 \input{titlepage}
-\input{Abstract} %% any other "Front matter" should go here before the table of contents - format in a style similar to the file Abstract.tex
-\tableofcontents 
-\addtocontents{toc}{~\hfill\textbf{Page}\par} % comment this line out if you want to remove "Page"
+\pagenumbering{roman}
+\tableofcontents
+\addtocontents{toc}{~\hfill\textbf{Page}\par}
+\cleardoublepage
+\pagenumbering{arabic}
+\setcounter{page}{1}
 \input{introduction}
-\input{background}
 \input{data_pipeline}
 \input{retrieval}
 \input{self_rag}

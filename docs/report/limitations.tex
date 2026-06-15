@@ -1,39 +1,23 @@
-\chapter{Limitations and Future Work}\label{ch:limitations}
+\chapter{Limitations}\label{ch:limitations}
 
-\section{Absence of a Quantitative Evaluation}
+\section{No Quantitative Evaluation}
 
-The most consequential limitation of this project is the absence of a labelled evaluation dataset for the SUSTech domain. Without a collection of (question, reference answer, relevant passages) triples drawn from real campus information needs, it is impossible to measure any aspect of the system's performance quantitatively: not retrieval precision or recall at any rank cutoff, not the faithfulness of generated answers to the retrieved evidence, not end-to-end answer accuracy, and not the marginal contribution of any individual pipeline component.
+The most significant limitation of this project is the complete absence of systematic evaluation. We have not constructed a labelled benchmark, measured retrieval precision or recall, or produced any quantitative scores for answer faithfulness or relevance.
 
-This matters because the system contains numerous design choices---hybrid retrieval versus dense-only, self-RAG versus simple RAG, specific values of chunk size, top-$k$, and temperature---that are motivated by reasoning and prior work in the retrieval-augmented generation literature but have not been empirically validated on \emph{this} corpus and \emph{this} query distribution. A choice that is correct in expectation over many benchmark datasets may be poorly calibrated for the specific characteristics of Chinese university web content.
+No evaluation dataset for SUSTech-specific information retrieval exists. Constructing one would require: (a) formulating a representative set of questions covering the full range of query types (factual lookups, procedural queries, multi-document synthesis, and out-of-scope rejections); (b) manually verifying ground-truth answers against the authoritative source pages; and (c) ensuring the crawled corpus actually contains those source pages. This is non-trivial work, and skipping it means the design choices in this project---paragraph-first chunking, hybrid retrieval, the self-RAG loop---are motivated by prior literature and engineering reasoning, but their actual effect on answer quality over this specific corpus is unknown.
 
-Standard RAG evaluation frameworks decompose system quality into dimensions such as context precision (what fraction of retrieved chunks is relevant?), context recall (what fraction of relevant information is retrieved?), faithfulness (is the generated answer entailed by the retrieved context?), and answer relevance (does the answer actually address the question?). Measuring these on even a modest benchmark of 100--200 questions would transform the system from a functioning prototype into a system with known, bounded properties. Constructing such a benchmark---through manual annotation by campus stakeholders or semi-automatic LLM-based question generation followed by human verification---is the single highest-priority item for future work.
+Without a benchmark, it is impossible to run controlled ablations. We cannot quantify the contribution of BM25 over dense-only retrieval, the improvement from cross-encoder reranking, or the difference in answer correctness between simple RAG and self-RAG modes. The system is a working prototype, but not a validated one.
 
-\section{Retrieval Quality Cannot Be Assessed}
-
-The hybrid retrieval architecture (dense + sparse + RRF + cross-encoder reranking) is substantially more complex than a dense-only baseline. Complexity is justified only if it improves retrieval quality, and that improvement has not been measured.
-
-Specifically, we do not know whether BM25 sparse retrieval adds information not already captured by BGE dense retrieval on this corpus; whether RRF fusion outperforms either individual ranker alone; or whether the cross-encoder reranker meaningfully reorders the RRF-fused list relative to leaving the RRF ranking unchanged. On a domain-specific Chinese corpus composed largely of short, structured documents, it is plausible that dense retrieval alone would perform comparably to the full hybrid pipeline at lower latency. The only way to resolve this is through ablation experiments over a labelled evaluation set.
-
-\section{Self-RAG Effectiveness is Unverified}
-
-The self-RAG reasoning loop introduces between two and six additional LLM calls per query (scope detection, per-candidate relevance assessment for up to four candidates, support validation, and potentially a second retrieval round). On the llama.cpp backend with a single concurrent request, each call can take several seconds, substantially increasing end-to-end latency compared to simple RAG mode.
-
-Whether this cost is justified by improved answer quality is an open question. The scope detection step may reject legitimate in-scope queries if the classifier is miscalibrated. The per-candidate relevance filter may discard passages that are genuinely useful but indirectly phrased. The support validation step may trigger unnecessary re-retrieval when the answer is correct but worded differently from its source text. All of these are failure modes of the self-RAG approach that would surface under systematic evaluation but are invisible without it. The \texttt{retrieval.mode: "simple"} configuration switch was precisely designed to enable A/B comparison---but that comparison has not been performed.
+Building a proper evaluation set---even a modest 100--200 labelled (question, answer, source passage) triples---would be the single most impactful next step. It would allow ablations across retrieval parameters, chunk sizes, and self-RAG configurations, and would transform the system from a well-engineered prototype into one with measurable, bounded properties.
 
 \section{Data Coverage and Freshness}
 
-The system was indexed from a single crawl capped at 200 pages under the default configuration. This represents a small fraction of the full SUSTech website, which spans thousands of pages. Pages that require authentication, are rendered dynamically by JavaScript, or were simply not reached within the crawl's BFS depth are absent from the index. A user querying for information on such pages will either receive a hallucinated answer (if the language model draws on parametric knowledge without self-RAG flagging it) or an explicit acknowledgement that the information is unavailable.
+The knowledge base was built from a static crawl limited to approximately 200 pages. This is a small fraction of the full SUSTech web presence. Several categories of pages are systematically absent:
 
-Campus information is also temporally perishable. Course offerings, administrative contacts, office locations, and event announcements all change on short timescales. The current system has no incremental update mechanism; re-indexing requires a full re-crawl. A production deployment would require a scheduled re-crawl strategy with change detection to avoid re-processing unchanged pages and to surface outdated indexed content for removal.
+\paragraph{JavaScript-rendered content.} The crawler operates at the HTML level and cannot execute JavaScript. Pages that load their content dynamically (staff directories, event listings, course catalogues) are either empty or absent from the index after extraction. This includes some of the most frequently queried types of campus information.
 
-\section{Future Directions}
+\paragraph{Data freshness.} Campus information changes on short timescales: staff contacts, course offerings, event notices, and administrative procedures are updated frequently. The current system has no incremental update mechanism. A scheduled re-crawl with page-level change detection would be required to keep the knowledge base current.
 
-In priority order, the most impactful improvements would be:
+\paragraph{Crawl depth and seed coverage.} The BFS crawl starts from a fixed set of seed URLs. Subsites that are not reachable from those seeds---or that are reachable only through JavaScript navigation---are never discovered. Important information sources such as departmental faculty pages, the graduate admissions portal, and the library catalogue are likely underrepresented or absent.
 
-\begin{enumerate}
-    \item \textbf{Evaluation dataset.} Construct a benchmark of 100--200 (question, answer, relevant passages) triples spanning the range of campus information needs: procedural questions, factual lookups, event queries, and out-of-scope control questions. This is a prerequisite for all subsequent empirical work.
-    \item \textbf{Ablation study.} Measure the isolated contribution of sparse retrieval, RRF fusion, cross-encoder reranking, and self-RAG reflection. Identify which components justify their complexity and latency cost on this specific corpus.
-    \item \textbf{Incremental indexing.} Implement a scheduled re-crawl with page-level change detection (e.g., content hash comparison) to keep the knowledge base current without full re-indexing.
-    \item \textbf{Broader crawl coverage.} Extend the crawl to JavaScript-rendered content via a headless browser, and---with appropriate access permissions---authenticated sections of the website.
-    \item \textbf{Structured data integration.} Campus data in structured formats (course timetables, exam schedules, room availability) is better queried through structured interfaces than through free-text RAG. A hybrid router that dispatches structured queries to a database backend and unstructured queries to the RAG pipeline would serve a wider range of campus information needs.
-\end{enumerate}
+Together, these gaps mean that many legitimate campus queries will result in a ``not found in knowledge base'' response, not because the system failed to retrieve correctly, but because the relevant page was never indexed. Expanding the crawl, adding targeted seed URLs, and integrating a headless browser for JavaScript-rendered pages would substantially improve coverage.
